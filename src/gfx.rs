@@ -134,7 +134,7 @@ impl Shader {
             &st.extras,
             effect,
             &st.footer,
-            ];
+        ];
 
         Shader::new(ty, &strs)
     }
@@ -205,9 +205,17 @@ impl Drop for Program {
 
 //
 
-// todo keeping an image in the textore is sort of a waste of space
+// TODO
+
+pub struct ProgramGenerator {
+}
+
+//
+
+// TODO keeping an image in the textore is sort of a waste of space
 //     if want to get a copy of texture as image just do it on demand
 //     keep width and height in here though
+// buffer data
 pub struct Texture {
     texture: GLuint,
     image: RgbaImage,
@@ -278,6 +286,27 @@ impl Texture {
         }
     }
 
+    pub fn set_border_color(&mut self, r: GLfloat, g: GLfloat, b: GLfloat, a: GLfloat) {
+        unsafe {
+            let tmp = [r, g, b, a];
+            gl::BindTexture(gl::TEXTURE_2D, self.texture);
+            gl::TexParameterfv(gl::TEXTURE_2D, gl::TEXTURE_BORDER_COLOR, tmp.as_ptr());
+            gl::BindTexture(gl::TEXTURE_2D, 0);
+        }
+    }
+
+    pub fn get_dimensions(&mut self, level: GLint) -> (GLint, GLint) {
+        unsafe {
+            let mut width = 0;
+            let mut height = 0;
+            gl::BindTexture(gl::TEXTURE_2D, self.texture);
+            gl::GetTexLevelParameteriv(gl::TEXTURE_2D, level, gl::TEXTURE_WIDTH, &mut width);
+            gl::GetTexLevelParameteriv(gl::TEXTURE_2D, level, gl::TEXTURE_HEIGHT, &mut height);
+            gl::BindTexture(gl::TEXTURE_2D, 0);
+            (width, height)
+        }
+    }
+
     pub fn gl(&self) -> GLuint {
         self.texture
     }
@@ -344,7 +373,18 @@ impl<T> TextureBuffer<T> {
     }
 
     pub fn buffer_data(&mut self) {
-        // TODO
+        if self.index == 0 {
+            return;
+        }
+
+        unsafe {
+            gl::BindBuffer(gl::TEXTURE_BUFFER, self.tbo);
+            gl::BufferSubData(gl::TEXTURE_BUFFER,
+                0,
+                (self.index * mem::size_of::<T>()) as isize,
+                self.buffer.as_ptr() as _);
+            gl::BindBuffer(gl::TEXTURE_BUFFER, 0);
+        }
     }
 
     pub fn fill_count(&self) -> usize {
@@ -421,6 +461,17 @@ impl Canvas {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
         }
     }
+
+    pub fn set_gl_viewport(&self) {
+        unsafe {
+            // TODO
+            // gl::Viewport(0, 0, width, height);
+        }
+    }
+
+    pub fn texture(&self) -> &Texture {
+        &self.texture
+    }
 }
 
 impl Drop for Canvas {
@@ -478,6 +529,12 @@ impl Mesh {
             gl::VertexAttribPointer(2, 2, gl::FLOAT, gl::FALSE,
                 mem::size_of::<Vertex>() as i32,
                 offset_of!(Vertex, uv) as _);
+
+            gl::EnableVertexAttribArray(0);
+            gl::EnableVertexAttribArray(1);
+            gl::EnableVertexAttribArray(2);
+
+            gl::BindVertexArray(0);
 
             Ok(Self {
                 vertices,
@@ -561,7 +618,8 @@ impl Uniform {
         unsafe {
             // TODO error if not found
             //  location == -1
-            let location = gl::GetUniformLocation(program.gl(), name.as_ptr() as _);
+            let c_str = CString::new(name.as_bytes()).unwrap();
+            let location = gl::GetUniformLocation(program.gl(), c_str.as_ptr() as _);
             Ok(Self {
                 location,
                 data,
@@ -577,17 +635,30 @@ impl Uniform {
                 Bool(val)  => gl::Uniform1i(self.location, if *val { 1 } else { 0 }),
                 Int(val)   => gl::Uniform1i(self.location, *val),
                 Vec4(val)  => {
-                    let mut buf: [GLfloat; 4] = [
-                        val.x,
-                        val.y,
-                        val.z,
-                        val.w,
-                        ];
+                    let buf: &[GLfloat; 4] = val.as_ref();
                     gl::Uniform4fv(self.location, 1, buf.as_ptr());
                 },
-                // TODO mat4
+                Mat4(val)  => {
+                    let buf: &[GLfloat; 16] = val.as_ref();
+                    gl::UniformMatrix4fv(self.location, 1, gl::FALSE, buf.as_ptr());
+                },
+                // TODO texture
                 _ => {}
             }
         }
     }
 }
+
+//
+
+// texture region
+// spritesheet
+// bitmap font
+
+// default uniforms
+// default prog_gen
+//   prog_gen
+//   maru_gen_load_filepath
+
+// spritebatch
+// shapedrawer
