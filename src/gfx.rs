@@ -6,7 +6,10 @@ use std::{
     mem,
 };
 
-use cgmath;
+use cgmath::{
+    Vector4,
+    Matrix4,
+};
 use gl;
 use gl::types::*;
 use image;
@@ -15,9 +18,60 @@ use memoffset::offset_of;
 
 //
 
+use crate::math::{
+    Vertex,
+    Vertices,
+};
+
+//
+
+// todo use string?
+//      can just use &str maybe
+//        then have to worry abt lifetimes
 #[derive(Debug)]
 pub enum GfxError {
      BadInit(String),
+}
+
+//
+
+pub struct ShaderTemplate {
+    header: String,
+    extras: String,
+    effect: String,
+    footer: String,
+}
+
+impl ShaderTemplate {
+    pub fn new(base: &str, extras: Option<&str>) -> Result<Self, GfxError> {
+        if !base.is_ascii() {
+            return Err(GfxError::BadInit(String::from("base string must be ascii")));
+        }
+
+        let ct = base.chars()
+            .filter(| &x | x == '@')
+            .count();
+        if ct != 2 {
+            return Err(GfxError::BadInit(String::from("invalid base string")));
+        }
+
+        let mut strs = base.split('@');
+        let header = String::from(strs.next().unwrap());
+        let effect = String::from(strs.next().unwrap());
+        let footer = String::from(strs.next().unwrap());
+
+        let extras = match extras {
+            Some(s) => String::from(s),
+            None    => String::new(),
+        };
+
+        Ok(Self {
+            header,
+            extras,
+            effect,
+            footer,
+        })
+    }
 }
 
 //
@@ -67,6 +121,22 @@ impl Shader {
 
             Ok(Self { shader })
         }
+    }
+
+    pub fn from_template(ty: GLenum, st: &ShaderTemplate, effect: Option<&str>) -> Result<Self, GfxError> {
+        let effect = match effect {
+            Some(s) => s,
+            None    => &st.effect,
+        };
+
+        let strs = [
+            &st.header,
+            &st.extras,
+            effect,
+            &st.footer,
+            ];
+
+        Shader::new(ty, &strs)
     }
 
     pub fn gl(&self) -> GLuint {
@@ -135,6 +205,9 @@ impl Drop for Program {
 
 //
 
+// todo keeping an image in the textore is sort of a waste of space
+//     if want to get a copy of texture as image just do it on demand
+//     keep width and height in here though
 pub struct Texture {
     texture: GLuint,
     image: RgbaImage,
@@ -177,6 +250,10 @@ impl Texture {
     }
 
     pub fn from_gl_texture(texture: GLuint) -> Result<Self, GfxError> {
+        // TODO
+        //   create image of same size as texture
+        //   read from gl texture??
+        //   dont do this but do query width and height
         Ok(Self {
             texture,
             image: RgbaImage::new(1, 1),
@@ -289,7 +366,71 @@ impl<T> Drop for TextureBuffer<T> {
 
 //
 
-// canvas
+pub struct Canvas {
+    texture: Texture,
+    fbo: GLuint,
+    rbo: GLuint,
+}
+
+impl Canvas {
+    pub fn new(width: u32, height: u32) -> Result<Self, GfxError> {
+        let mut img = RgbaImage::new(width, height);
+        for p in img.pixels_mut() {
+            p[3] = 255;
+        }
+
+        let texture = Texture::new(img)?;
+
+        unsafe {
+            let mut rbo = 0;
+            let mut fbo = 0;
+
+            gl::GenRenderbuffers(1, &mut rbo);
+            gl::BindRenderbuffer(gl::RENDERBUFFER, rbo);
+            gl::RenderbufferStorage(gl::RENDERBUFFER,
+                gl::DEPTH24_STENCIL8,
+                width as i32,
+                height as i32);
+            gl::BindRenderbuffer(gl::RENDERBUFFER, 0);
+
+            gl::GenFramebuffers(1, &mut fbo);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
+            gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, texture.gl(), 0);
+            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER,
+                gl::DEPTH_STENCIL_ATTACHMENT,
+                gl::RENDERBUFFER,
+                rbo);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+
+            Ok(Self {
+                texture,
+                fbo,
+                rbo,
+            })
+        }
+    }
+
+    pub fn bind(&self) {
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+        }
+    }
+
+    pub fn unbind(&self) {
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+        }
+    }
+}
+
+impl Drop for Canvas {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteFramebuffers(1, &mut self.fbo);
+            gl::DeleteRenderbuffers(1, &mut self.rbo);
+        }
+    }
+}
 
 //
 
@@ -405,8 +546,8 @@ pub enum UniformData {
     Float(f32),
     Bool(bool),
     Int(i32),
-    Vec4(Vec4),
-    Mat4(Mat4),
+    Vec4(Vector4<GLfloat>),
+    Mat4(Matrix4<GLfloat>),
     TextureData(TextureData),
 }
 
