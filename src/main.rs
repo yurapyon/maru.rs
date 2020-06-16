@@ -140,7 +140,7 @@ fn main() {
 
         draw.sprite(&locs, &tex, 
                 &math::Transform2d {
-                    scale: Vector2::from([1., 1.]),
+                    scale: Vector2::from([0.75, 1.]),
                     .. Default::default()
                 });
 

@@ -93,15 +93,11 @@ pub struct Shader {
 impl Shader {
     pub fn new(ty: GLenum, strings: &[&str]) -> Result<Self, GfxError> {
         let c_strs: Vec<_> = strings.iter()
-            .map(| s | {
-                CString::new(s.as_bytes()).unwrap()
-            })
+            .map(| s | CString::new(s.as_bytes()).unwrap())
             .collect();
 
         let c_ptrs: Vec<_> = c_strs.iter()
-            .map(| s | {
-                s.as_ptr()
-            })
+            .map(| s | s.as_ptr())
             .collect();
 
         unsafe {
@@ -839,8 +835,8 @@ impl Drawer {
 
     pub fn sprite(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
         let temp = Transform2d {
-            scale: Vector2::new(texture.width() as GLfloat,
-                                texture.height() as GLfloat),
+            scale: Vector2::new(transform.scale.x * texture.width() as GLfloat,
+                                transform.scale.y * texture.height() as GLfloat),
             .. *transform
         };
         self.sprite_px(locations, texture, &temp);
