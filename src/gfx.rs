@@ -98,7 +98,7 @@ impl Shader {
         unsafe {
             let shader = gl::CreateShader(ty);
 
-            gl::ShaderSource(shader, c_ptrs.len() as i32, c_ptrs.as_ptr(), ptr::null());
+            gl::ShaderSource(shader, c_ptrs.len() as GLsizei, c_ptrs.as_ptr(), ptr::null());
             gl::CompileShader(shader);
 
             let mut success = gl::FALSE as GLint;
@@ -347,7 +347,7 @@ impl<T> TextureBuffer<T> {
             gl::GenBuffers(1, &mut tbo);
             gl::BindBuffer(gl::TEXTURE_BUFFER, tbo);
             gl::BufferData(gl::TEXTURE_BUFFER,
-                (len * mem::size_of::<T>()) as isize,
+                (len * mem::size_of::<T>()) as GLsizeiptr,
                 ptr::null(),
                 gl::STREAM_DRAW);
 
@@ -364,7 +364,7 @@ impl<T> TextureBuffer<T> {
 
             Ok(Self {
                 tbo,
-                texture: Texture::from_gl_texture(texture).unwrap(),
+                texture: Texture::from_gl_texture(texture)?,
                 index: 0,
                 buffer,
             })
@@ -392,7 +392,7 @@ impl<T> TextureBuffer<T> {
             gl::BindBuffer(gl::TEXTURE_BUFFER, self.tbo);
             gl::BufferSubData(gl::TEXTURE_BUFFER,
                 0,
-                (self.index * mem::size_of::<T>()) as isize,
+                (self.index * mem::size_of::<T>()) as GLsizeiptr,
                 self.buffer.as_ptr() as _);
             gl::BindBuffer(gl::TEXTURE_BUFFER, 0);
         }
@@ -440,8 +440,8 @@ impl Canvas {
             gl::BindRenderbuffer(gl::RENDERBUFFER, rbo);
             gl::RenderbufferStorage(gl::RENDERBUFFER,
                 gl::DEPTH24_STENCIL8,
-                width as i32,
-                height as i32);
+                width as GLsizei,
+                height as GLsizei);
             gl::BindRenderbuffer(gl::RENDERBUFFER, 0);
 
             gl::GenFramebuffers(1, &mut fbo);
@@ -530,15 +530,15 @@ impl Mesh {
                 buffer_type);
 
             gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE,
-                mem::size_of::<Vertex>() as i32,
+                mem::size_of::<Vertex>() as GLsizei,
                 offset_of!(Vertex, position) as _);
 
             gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE,
-                mem::size_of::<Vertex>() as i32,
+                mem::size_of::<Vertex>() as GLsizei,
                 offset_of!(Vertex, normal) as _);
 
             gl::VertexAttribPointer(2, 2, gl::FLOAT, gl::FALSE,
-                mem::size_of::<Vertex>() as i32,
+                mem::size_of::<Vertex>() as GLsizei,
                 offset_of!(Vertex, uv) as _);
 
             gl::EnableVertexAttribArray(0);
