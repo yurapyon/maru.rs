@@ -193,6 +193,12 @@ impl Program {
     pub fn gl(&self) -> GLuint {
         self.program
     }
+
+    pub fn gl_use(&self) {
+        unsafe {
+            gl::UseProgram(self.program);
+        }
+    }
 }
 
 impl Drop for Program {
@@ -231,11 +237,16 @@ impl Texture {
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D, texture);
 
+            // TODO
+            /*
             let ty = if cfg!(target_endian = "little") {
                     gl::UNSIGNED_INT_8_8_8_8
                 } else {
                     gl::UNSIGNED_INT_8_8_8_8_REV
                 };
+            */
+
+            let ty = gl::UNSIGNED_INT_8_8_8_8_REV;
 
             let i_vec = image.clone().into_vec();
 
@@ -590,22 +601,47 @@ impl Drop for Mesh {
 
 //
 
-// TODO
-//   texture should be &'a Texture
-//   use a separate TextureSlot struct just for textures
-pub struct TextureData {
-    select: GLenum,
-    bind_to: GLenum,
-    texture: GLuint,
+pub struct TextureData<'a> {
+    pub select: GLenum,
+    pub bind_to: GLenum,
+    pub texture: &'a Texture,
 }
 
+pub struct TextureUniform<'a> {
+    data: TextureData<'a>,
+    u_texture: Uniform,
+}
+
+impl<'a> TextureUniform<'a> {
+    pub fn new(data: TextureData<'a>, program: &Program, name: &str) -> Result<Self, GfxError> {
+        let u_texture = Uniform::new(UniformData::Unsigned(data.select - gl::TEXTURE0), program, name)?;
+        Ok(Self {
+            data,
+            u_texture,
+        })
+    }
+
+    pub fn apply(&self) {
+        self.u_texture.apply();
+        unsafe {
+            gl::ActiveTexture(self.data.select);
+            gl::BindTexture(self.data.bind_to, self.data.texture.gl());
+
+        }
+    }
+}
+
+//
+
+// TODO how to edit info
+
 pub enum UniformData {
-    Float(f32),
+    Float(GLfloat),
     Bool(bool),
-    Int(i32),
+    Int(GLint),
+    Unsigned(GLuint),
     Vec4(Vector4<GLfloat>),
     Mat4(Matrix4<GLfloat>),
-    TextureData(TextureData),
 }
 
 pub struct Uniform {
@@ -631,20 +667,69 @@ impl Uniform {
         use UniformData::*;
         unsafe {
             match &self.data {
-                Float(val) => gl::Uniform1f(self.location, *val),
-                Bool(val)  => gl::Uniform1i(self.location, if *val { 1 } else { 0 }),
-                Int(val)   => gl::Uniform1i(self.location, *val),
-                Vec4(val)  => {
+                Float(val)    => gl::Uniform1f(self.location, *val),
+                Bool(val)     => gl::Uniform1i(self.location, if *val { 1 } else { 0 }),
+                Int(val)      => gl::Uniform1i(self.location, *val),
+                Unsigned(val) => gl::Uniform1ui(self.location, *val),
+                Vec4(val) => {
                     let buf: &[GLfloat; 4] = val.as_ref();
                     gl::Uniform4fv(self.location, 1, buf.as_ptr());
                 },
-                Mat4(val)  => {
+                Mat4(val) => {
                     let buf: &[GLfloat; 16] = val.as_ref();
                     gl::UniformMatrix4fv(self.location, 1, gl::FALSE, buf.as_ptr());
                 },
-                // TODO texture
-                _ => {}
             }
+        }
+    }
+
+    // TODO is this good?
+    //   probably
+    pub fn float(&mut self) -> Option<&mut GLfloat> {
+        if let UniformData::Float(val) = &mut self.data {
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    pub fn bool(&mut self) -> Option<&mut bool> {
+        if let UniformData::Bool(val) = &mut self.data {
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    pub fn int(&mut self) -> Option<&mut GLint> {
+        if let UniformData::Int(val) = &mut self.data {
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    pub fn unsigned(&mut self) -> Option<&mut GLuint> {
+        if let UniformData::Unsigned(val) = &mut self.data {
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    pub fn vec4(&mut self) -> Option<&mut Vector4<GLfloat>> {
+        if let UniformData::Vec4(val) = &mut self.data {
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    pub fn mat4(&mut self) -> Option<&mut Matrix4<GLfloat>> {
+        if let UniformData::Mat4(val) = &mut self.data {
+            Some(val)
+        } else {
+            None
         }
     }
 }

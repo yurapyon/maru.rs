@@ -1,8 +1,13 @@
-use std::env;
+use std::{
+    env,
+    thread,
+    time,
+};
 
 use cgmath::{
     prelude::*,
     Vector2,
+    Vector4,
     Matrix4,
     Ortho,
 };
@@ -14,9 +19,12 @@ use image;
 
 //
 
-use maru::gfx::*;
-use maru::math;
-use maru::math::ext::*;
+use maru::{
+    content,
+    gfx::*,
+    math,
+    math::ext::*,
+};
 
 fn main() {
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
@@ -39,35 +47,40 @@ fn main() {
     }
 
     let prog = {
-        let vert = Shader::new(gl::VERTEX_SHADER, &["#version 330 core\n", "\
-layout (location = 0) in vec3 position;
-layout (location = 1) in vec3 normal;
-layout (location = 2) in vec2 uv;
+        let vert = Shader::from_template(gl::VERTEX_SHADER,
+            &ShaderTemplate::new(content::shaders::DEFAULT_VERT,
+                Some(content::shaders::EXTRAS)).unwrap(),
+            None,
+        ).unwrap();
 
-uniform mat4 projection;
-uniform mat4 view;
-uniform mat4 model;
+        let frag = Shader::from_template(gl::FRAGMENT_SHADER,
+            &ShaderTemplate::new(content::shaders::DEFAULT_FRAG,
+                Some(content::shaders::EXTRAS)).unwrap(),
+            Some("
+                vec4 effect() {
+                    vec4 c = _base_color;
+                    c.r = sin(_time) *0.5+1;
+                    c.g = cos(_time) *0.5+1;
+                    return c * texture2D(_diffuse, _uv_coord);
+                }"),
+        ).unwrap();
 
-void main() {
-    gl_Position = projection * view * model * vec4(position, 1.0);
-}"
-        ]).unwrap();
-
-        let frag = Shader::new(gl::FRAGMENT_SHADER, &["#version 330 core\n", "\
-out vec4 out_color;
-
-void main() {
-    out_color = vec4(1.0, 1.0, 1.0, 1.0);
-}"
-        ]).unwrap();
         Program::new(&[vert, frag])
     }.unwrap();
 
     println!("{:?}", prog);
 
     println!("{:?}", env::current_dir());
-    let img = image::open("content/mahou.jpg").unwrap().to_rgba();
+    println!("{:?}", env!("CARGO_MANIFEST_DIR"));
+    let img = image::load_from_memory(content::image::MAHOU).unwrap().to_rgba();
     let tex = Texture::new(img).unwrap();
+
+    let td = TextureData {
+        select: gl::TEXTURE0,
+        bind_to: gl::TEXTURE_2D,
+        texture: &tex,
+    };
+    let tu_mahou = TextureUniform::new(td, &prog, "_diffuse").unwrap();
 
     let quad_mesh = Mesh::new(math::Vertices::quad(false),
         gl::STATIC_DRAW,
@@ -76,21 +89,33 @@ void main() {
     let u_proj = Uniform::new(
         UniformData::Mat4(Matrix4::from(Ortho::screen(600., 400.))),
         &prog,
-        "projection").unwrap();
+        "_projection").unwrap();
 
     let u_view = Uniform::new(
         UniformData::Mat4(Matrix4::identity()),
         &prog,
-        "view").unwrap();
+        "_view").unwrap();
 
     let u_model = Uniform::new(
         UniformData::Mat4(Matrix4::from_transform2d(
                 &math::Transform2d {
-                    scale: Vector2::from([100., 100.]),
+                    scale: Vector2::from([400., 300.]),
                     .. Default::default()
                 })),
         &prog,
-        "model").unwrap();
+        "_model").unwrap();
+
+    let u_color = Uniform::new(
+        UniformData::Vec4(Vector4::from([1., 1., 1., 1.])),
+        &prog,
+        "_base_color").unwrap();
+
+    let mut u_time = Uniform::new(
+        UniformData::Float(0.),
+        &prog,
+        "_time").unwrap();
+
+    let s_tm = time::Duration::from_millis(30);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -104,19 +129,25 @@ void main() {
             }
         }
 
+        *u_time.float().unwrap() += 0.1;
+
         unsafe {
             gl::ClearColor(0., 0., 0., 0.);
             gl::Clear(gl::COLOR_BUFFER_BIT);
-
-            gl::UseProgram(prog.gl());
         }
 
+        prog.gl_use();
         u_proj.apply();
         u_view.apply();
         u_model.apply();
+        u_color.apply();
+        u_time.apply();
+
+        tu_mahou.apply();
 
         quad_mesh.draw();
 
         window.swap_buffers();
+        thread::sleep(s_tm);
     }
 }
