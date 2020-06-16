@@ -73,49 +73,38 @@ fn main() {
     println!("{:?}", env::current_dir());
     println!("{:?}", env!("CARGO_MANIFEST_DIR"));
     let img = image::load_from_memory(content::image::MAHOU).unwrap().to_rgba();
-    let tex = Texture::new(img).unwrap();
-
-    let td = TextureData {
-        select: gl::TEXTURE0,
-        bind_to: gl::TEXTURE_2D,
-        texture: &tex,
-    };
-    let tu_mahou = TextureUniform::new(td, &prog, "_diffuse").unwrap();
+    let tex = Texture::new(&img).unwrap();
 
     let quad_mesh = Mesh::new(math::Vertices::quad(false),
         gl::STATIC_DRAW,
         gl::TRIANGLE_STRIP).unwrap();
 
-    let u_proj = Uniform::new(
-        UniformData::Mat4(Matrix4::from(Ortho::screen(600., 400.))),
-        &prog,
-        "_projection").unwrap();
+    let locs = DefaultLocations::new(&prog);
 
-    let u_view = Uniform::new(
-        UniformData::Mat4(Matrix4::identity()),
-        &prog,
-        "_view").unwrap();
+    let m4_proj = Matrix4::from(Ortho::screen(600., 400.));
 
-    let u_model = Uniform::new(
-        UniformData::Mat4(Matrix4::from_transform2d(
+    let m4_view = Matrix4::identity();
+
+    let m4_model =
+        Matrix4::from_transform2d(
                 &math::Transform2d {
                     scale: Vector2::from([400., 300.]),
                     .. Default::default()
-                })),
-        &prog,
-        "_model").unwrap();
+                });
 
-    let u_color = Uniform::new(
-        UniformData::Vec4(Vector4::from([1., 1., 1., 1.])),
-        &prog,
-        "_base_color").unwrap();
+    let mut v4_color = Vector4::from([1., 1., 1., 1.]);
 
-    let mut u_time = Uniform::new(
-        UniformData::Float(0.),
-        &prog,
-        "_time").unwrap();
+    let mut f_time: GLfloat = 0.;
+
+    let td_diffuse = TextureData {
+        select: gl::TEXTURE0,
+        bind_to: gl::TEXTURE_2D,
+        texture: &tex,
+    };
 
     let s_tm = time::Duration::from_millis(30);
+
+    let draw = Drawer::new(50);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -129,7 +118,8 @@ fn main() {
             }
         }
 
-        *u_time.float().unwrap() += 0.1;
+        // *u_time.float().unwrap() += 0.1;
+        f_time += 0.1;
 
         unsafe {
             gl::ClearColor(0., 0., 0., 0.);
@@ -137,15 +127,29 @@ fn main() {
         }
 
         prog.gl_use();
-        u_proj.apply();
-        u_view.apply();
-        u_model.apply();
-        u_color.apply();
-        u_time.apply();
+        m4_proj.uniform(locs.projection());
+        m4_view.uniform(locs.view());
+        // m4_model.uniform(locs.model());
+        v4_color.x = 1.;
+        v4_color.y = 1.;
+        v4_color.z = 1.;
+        v4_color.uniform(locs.base_color());
+        f_time.uniform(locs.time());
+        // td_diffuse.uniform(locs.diffuse());
+        // quad_mesh.draw();
 
-        tu_mahou.apply();
+        draw.sprite(&locs, &tex, 
+                &math::Transform2d {
+                    scale: Vector2::from([1., 1.]),
+                    .. Default::default()
+                });
 
-        quad_mesh.draw();
+        v4_color.x = 0.;
+        v4_color.y = 0.;
+        v4_color.z = 0.;
+        v4_color.uniform(locs.base_color());
+        draw.filled_rectangle(&locs, Vector4::new(10., 10., 50., 50.));
+
 
         window.swap_buffers();
         thread::sleep(s_tm);

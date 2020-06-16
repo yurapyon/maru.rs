@@ -7,25 +7,31 @@ use std::{
 };
 
 use cgmath::{
+    Vector2,
     Vector4,
     Matrix4,
 };
 use gl;
 use gl::types::*;
 use image;
-use image::RgbaImage;
+use image::{
+    RgbaImage,
+    Rgba
+};
 use memoffset::offset_of;
 
 //
 
 use crate::math::{
+    ext::*,
+    Transform2d,
     Vertex,
     Vertices,
 };
 
 //
 
-// todo use string?
+// TODO use string?
 //      can just use &str maybe
 //        then have to worry abt lifetimes
 #[derive(Debug)]
@@ -76,6 +82,9 @@ impl ShaderTemplate {
 
 //
 
+// TODO think about using Newtype
+//    not going to be any different
+//    only thing would be optimization i guess
 #[derive(Debug)]
 pub struct Shader {
     shader: GLuint,
@@ -218,17 +227,18 @@ pub struct ProgramGenerator {
 
 //
 
-// TODO keeping an image in the textore is sort of a waste of space
-//     if want to get a copy of texture as image just do it on demand
-//     keep width and height in here though
-// buffer data
+// TODO
+//   if local image is needed later, just add it
+//   buffer data
+//   switch width and height to usizes?
 pub struct Texture {
     texture: GLuint,
-    image: RgbaImage,
+    width: GLint,
+    height: GLint,
 }
 
 impl Texture {
-    pub fn new(image: RgbaImage) -> Result<Self, GfxError> {
+    pub fn new(image: &RgbaImage) -> Result<Self, GfxError> {
         unsafe {
             // TODO check errors
             //      use glpixelstore instead
@@ -238,6 +248,8 @@ impl Texture {
             gl::BindTexture(gl::TEXTURE_2D, texture);
 
             // TODO
+            //   endianness not neccessary cuz Rgba<u8> is fixed order
+            //   why do i have to do reverse though?
             /*
             let ty = if cfg!(target_endian = "little") {
                     gl::UNSIGNED_INT_8_8_8_8
@@ -259,7 +271,8 @@ impl Texture {
 
             let mut ret = Self {
                 texture,
-                image,
+                width: image.width() as GLint,
+                height: image.height() as GLint,
             };
 
             ret.set_wrap(gl::REPEAT, gl::REPEAT);
@@ -269,13 +282,11 @@ impl Texture {
     }
 
     pub fn from_gl_texture(texture: GLuint) -> Result<Self, GfxError> {
-        // TODO
-        //   create image of same size as texture
-        //   read from gl texture??
-        //   dont do this but do query width and height
+        let (width, height) = Self::_get_dimensions(texture, 1);
         Ok(Self {
             texture,
-            image: RgbaImage::new(1, 1),
+            width,
+            height,
         })
     }
 
@@ -306,11 +317,11 @@ impl Texture {
         }
     }
 
-    pub fn get_dimensions(&mut self, level: GLint) -> (GLint, GLint) {
+    fn _get_dimensions(texture: GLuint, level: GLint) -> (GLint, GLint) {
         unsafe {
             let mut width = 0;
             let mut height = 0;
-            gl::BindTexture(gl::TEXTURE_2D, self.texture);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
             gl::GetTexLevelParameteriv(gl::TEXTURE_2D, level, gl::TEXTURE_WIDTH, &mut width);
             gl::GetTexLevelParameteriv(gl::TEXTURE_2D, level, gl::TEXTURE_HEIGHT, &mut height);
             gl::BindTexture(gl::TEXTURE_2D, 0);
@@ -318,8 +329,20 @@ impl Texture {
         }
     }
 
+    pub fn get_dimensions(&self, level: GLint) -> (GLint, GLint) {
+        Self::_get_dimensions(self.texture, level)
+    }
+
     pub fn gl(&self) -> GLuint {
         self.texture
+    }
+
+    pub fn width(&self) -> GLint {
+        self.width
+    }
+
+    pub fn height(&self) -> GLint {
+        self.height
     }
 }
 
@@ -430,7 +453,7 @@ impl Canvas {
             p[3] = 255;
         }
 
-        let texture = Texture::new(img)?;
+        let texture = Texture::new(&img)?;
 
         unsafe {
             let mut rbo = 0;
@@ -475,8 +498,7 @@ impl Canvas {
 
     pub fn set_gl_viewport(&self) {
         unsafe {
-            // TODO
-            // gl::Viewport(0, 0, width, height);
+            gl::Viewport(0, 0, self.texture.width() as GLsizei, self.texture.height() as GLsizei);
         }
     }
 
@@ -601,135 +623,116 @@ impl Drop for Mesh {
 
 //
 
+// note: sometimes location will be -1
+//       if location can not be found
+//       just ignore it gracefully
+//         or have separate 'new' function that reports error
+pub struct Location {
+    location: GLint
+}
+
+impl Location {
+    pub fn new(program: &Program, name: &str) -> Self {
+        unsafe {
+            let c_str = CString::new(name.as_bytes()).unwrap();
+            let location = gl::GetUniformLocation(program.gl(), c_str.as_ptr() as _);
+            Self {
+                location,
+            }
+        }
+    }
+
+    pub fn location(&self) -> GLint {
+        self.location
+    }
+}
+
+//
+
+pub trait Uniform {
+    fn uniform(&self, loc: &Location);
+}
+
+impl Uniform for GLfloat {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1f(loc.location(), *self);
+        }
+    }
+}
+
+impl Uniform for bool {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1i(loc.location(), if *self { 1 } else { 0 });
+        }
+    }
+}
+
+impl Uniform for GLint {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1i(loc.location(), *self);
+        }
+    }
+}
+
+impl Uniform for GLuint {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1ui(loc.location(), *self);
+        }
+    }
+}
+
+impl Uniform for Vector4<GLfloat> {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            let buf: &[GLfloat; 4] = self.as_ref();
+            gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
+        }
+    }
+}
+
+impl Uniform for Matrix4<GLfloat> {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            let buf: &[GLfloat; 16] = self.as_ref();
+            gl::UniformMatrix4fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
+        }
+    }
+}
+
 pub struct TextureData<'a> {
     pub select: GLenum,
     pub bind_to: GLenum,
     pub texture: &'a Texture,
 }
 
-pub struct TextureUniform<'a> {
-    data: TextureData<'a>,
-    u_texture: Uniform,
-}
-
-impl<'a> TextureUniform<'a> {
-    pub fn new(data: TextureData<'a>, program: &Program, name: &str) -> Result<Self, GfxError> {
-        let u_texture = Uniform::new(UniformData::Unsigned(data.select - gl::TEXTURE0), program, name)?;
-        Ok(Self {
-            data,
-            u_texture,
-        })
+impl<'a> TextureData<'a> {
+    pub fn diffuse(texture: &'a Texture) -> Self {
+        Self {
+            select: gl::TEXTURE0,
+            bind_to: gl::TEXTURE_2D,
+            texture,
+        }
     }
 
-    pub fn apply(&self) {
-        self.u_texture.apply();
+    pub fn normal(texture: &'a Texture) -> Self {
+        Self {
+            select: gl::TEXTURE1,
+            bind_to: gl::TEXTURE_2D,
+            texture,
+        }
+    }
+}
+
+impl Uniform for TextureData<'_> {
+    fn uniform(&self, loc: &Location) {
+        (self.select - gl::TEXTURE0).uniform(loc);
         unsafe {
-            gl::ActiveTexture(self.data.select);
-            gl::BindTexture(self.data.bind_to, self.data.texture.gl());
-
-        }
-    }
-}
-
-//
-
-// TODO how to edit info
-
-pub enum UniformData {
-    Float(GLfloat),
-    Bool(bool),
-    Int(GLint),
-    Unsigned(GLuint),
-    Vec4(Vector4<GLfloat>),
-    Mat4(Matrix4<GLfloat>),
-}
-
-pub struct Uniform {
-    location: GLint,
-    data: UniformData,
-}
-
-impl Uniform {
-    pub fn new(data: UniformData, program: &Program, name: &str) -> Result<Self, GfxError> {
-        unsafe {
-            // TODO error if not found
-            //  location == -1
-            let c_str = CString::new(name.as_bytes()).unwrap();
-            let location = gl::GetUniformLocation(program.gl(), c_str.as_ptr() as _);
-            Ok(Self {
-                location,
-                data,
-            })
-        }
-    }
-
-    pub fn apply(&self) {
-        use UniformData::*;
-        unsafe {
-            match &self.data {
-                Float(val)    => gl::Uniform1f(self.location, *val),
-                Bool(val)     => gl::Uniform1i(self.location, if *val { 1 } else { 0 }),
-                Int(val)      => gl::Uniform1i(self.location, *val),
-                Unsigned(val) => gl::Uniform1ui(self.location, *val),
-                Vec4(val) => {
-                    let buf: &[GLfloat; 4] = val.as_ref();
-                    gl::Uniform4fv(self.location, 1, buf.as_ptr());
-                },
-                Mat4(val) => {
-                    let buf: &[GLfloat; 16] = val.as_ref();
-                    gl::UniformMatrix4fv(self.location, 1, gl::FALSE, buf.as_ptr());
-                },
-            }
-        }
-    }
-
-    // TODO is this good?
-    //   probably
-    pub fn float(&mut self) -> Option<&mut GLfloat> {
-        if let UniformData::Float(val) = &mut self.data {
-            Some(val)
-        } else {
-            None
-        }
-    }
-
-    pub fn bool(&mut self) -> Option<&mut bool> {
-        if let UniformData::Bool(val) = &mut self.data {
-            Some(val)
-        } else {
-            None
-        }
-    }
-
-    pub fn int(&mut self) -> Option<&mut GLint> {
-        if let UniformData::Int(val) = &mut self.data {
-            Some(val)
-        } else {
-            None
-        }
-    }
-
-    pub fn unsigned(&mut self) -> Option<&mut GLuint> {
-        if let UniformData::Unsigned(val) = &mut self.data {
-            Some(val)
-        } else {
-            None
-        }
-    }
-
-    pub fn vec4(&mut self) -> Option<&mut Vector4<GLfloat>> {
-        if let UniformData::Vec4(val) = &mut self.data {
-            Some(val)
-        } else {
-            None
-        }
-    }
-
-    pub fn mat4(&mut self) -> Option<&mut Matrix4<GLfloat>> {
-        if let UniformData::Mat4(val) = &mut self.data {
-            Some(val)
-        } else {
-            None
+            gl::ActiveTexture(self.select);
+            gl::BindTexture(self.bind_to, self.texture.gl());
         }
     }
 }
@@ -739,6 +742,120 @@ impl Uniform {
 // texture region
 // spritesheet
 // bitmap font
+
+//
+
+pub struct DefaultLocations {
+    projection: Location,
+    view: Location,
+    model: Location,
+    time: Location,
+    flip_uvs: Location,
+    base_color: Location,
+    diffuse: Location,
+    normal: Location,
+    sb_instance_buffer: Location,
+}
+
+impl DefaultLocations {
+    pub fn new(program: &Program) -> Self {
+        Self {
+            projection:         Location::new(program, "_projection"),
+            view:               Location::new(program, "_view"),
+            model:              Location::new(program, "_model"),
+            time:               Location::new(program, "_time"),
+            flip_uvs:           Location::new(program, "_flip_uvs"),
+            base_color:         Location::new(program, "_base_color"),
+            diffuse:            Location::new(program, "_diffuse"),
+            normal:             Location::new(program, "_normal"),
+            sb_instance_buffer: Location::new(program, "_sb_instance_buffer"),
+        }
+    }
+
+    // TODO return ref?
+    //   yea? because Uniform::uniform takes ref
+    pub fn projection(&self) -> &Location {
+        &self.projection
+    }
+
+    pub fn view(&self) -> &Location {
+        &self.view
+    }
+
+    pub fn model(&self) -> &Location {
+        &self.model
+    }
+
+    pub fn time(&self) -> &Location {
+        &self.time
+    }
+
+    pub fn base_color(&self) -> &Location {
+        &self.base_color
+    }
+
+    pub fn diffuse(&self) -> &Location {
+        &self.diffuse
+    }
+
+    pub fn normal(&self) -> &Location {
+        &self.normal
+    }
+
+    pub fn sb_instance_buffer(&self) -> &Location {
+        &self.sb_instance_buffer
+    }
+}
+
+// this is just a bunch of functions that generate uniforms on the fly
+//   and applies them to current program
+// also has meshes and textures
+
+pub struct Drawer {
+    mesh_quad: Mesh,
+    mesh_circle: Mesh,
+    tex_white: Texture,
+}
+
+impl Drawer {
+    pub fn new(circle_resolution: usize) -> Self {
+        let img = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
+        Self {
+            mesh_quad: Mesh::new(Vertices::quad(false),
+                                 gl::STATIC_DRAW,
+                                 gl::TRIANGLE_STRIP).unwrap(),
+            mesh_circle: Mesh::new(Vertices::circle(circle_resolution),
+                                   gl::STATIC_DRAW,
+                                   gl::TRIANGLE_FAN).unwrap(),
+            tex_white: Texture::new(&img).unwrap(),
+        }
+    }
+
+    pub fn sprite_px(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
+        TextureData::diffuse(texture).uniform(locations.diffuse());
+        Matrix4::from_transform2d(transform).uniform(locations.model());
+        self.mesh_quad.draw();
+    }
+
+    pub fn sprite(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
+        let temp = Transform2d {
+            scale: Vector2::new(texture.width() as GLfloat,
+                                texture.height() as GLfloat),
+            .. *transform
+        };
+        self.sprite_px(locations, texture, &temp);
+    }
+
+    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: Vector4<GLfloat>) {
+        let temp = Transform2d {
+            position: Vector2::new(rect.x, rect.y),
+            scale:    Vector2::new(rect.z - rect.x,
+                                   rect.w - rect.y),
+            rotation: 0.,
+        };
+        self.sprite_px(locations, &self.tex_white, &temp);
+    }
+}
 
 // default uniforms
 // default prog_gen

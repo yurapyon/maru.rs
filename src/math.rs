@@ -23,9 +23,9 @@ pub struct Vertex {
 impl Default for Vertex {
     fn default() -> Self {
         Self {
-            position: Vector3::from([0., 0., 0.]),
-            normal:   Vector3::from([0., 0., 0.]),
-            uv:       Vector2::from([0., 0.]),
+            position: Vector3::new(0., 0., 0.),
+            normal:   Vector3::new(0., 0., 0.),
+            uv:       Vector2::new(0., 0.),
         }
     }
 }
@@ -36,31 +36,30 @@ pub struct Vertices {
 }
 
 impl Vertices {
-    // TODO clean up, maybe not use Vector::from()
     pub fn quad(centered: bool) -> Vertices {
         let mut vertices = Vec::with_capacity(4);
 
         vertices.push(Vertex {
-            position: Vector3::from([1., 1., 0.]),
-            uv:       Vector2::from([1., 1.]),
+            position: Vector3::new(1., 1., 0.),
+            uv:       Vector2::new(1., 1.),
             .. Default::default()
         });
 
         vertices.push(Vertex {
-            position: Vector3::from([1., 0., 0.]),
-            uv:       Vector2::from([1., 0.]),
+            position: Vector3::new(1., 0., 0.),
+            uv:       Vector2::new(1., 0.),
             .. Default::default()
         });
 
         vertices.push(Vertex {
-            position: Vector3::from([0., 1., 0.]),
-            uv:       Vector2::from([0., 1.]),
+            position: Vector3::new(0., 1., 0.),
+            uv:       Vector2::new(0., 1.),
             .. Default::default()
         });
 
         vertices.push(Vertex {
-            position: Vector3::from([0., 0., 0.]),
-            uv:       Vector2::from([0., 0.]),
+            position: Vector3::new(0., 0., 0.),
+            uv:       Vector2::new(0., 0.),
             .. Default::default()
         });
 
@@ -89,8 +88,8 @@ impl Vertices {
             let x = at.cos() / 2.;
             let y = at.sin() / 2.;
             vertices.push(Vertex {
-                position: Vector3::from([x, y, 0.]),
-                uv:       Vector2::from([x + 0.5, y + 0.5]),
+                position: Vector3::new(x, y, 0.),
+                uv:       Vector2::new(x + 0.5, y + 0.5),
                 .. Default::default()
             });
         }
@@ -113,8 +112,8 @@ pub struct Transform2d {
 impl Default for Transform2d {
     fn default() -> Self {
         Self {
-            position: Vector2::from([0., 0.]),
-            scale:    Vector2::from([1., 1.]),
+            position: Vector2::new(0., 0.),
+            scale:    Vector2::new(1., 1.),
             rotation: 0.,
         }
     }
