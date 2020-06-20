@@ -46,7 +46,7 @@ fn main() {
         gl::Viewport(0, 0, 600, 400);
     }
 
-    let prog = Program::maru_default(None,
+    let prog = Program::new_default(None,
             Some("
                 vec4 effect() {
                     vec4 c = _base_color;
@@ -75,7 +75,7 @@ fn main() {
     let m4_model =
         Matrix4::from_transform2d(
                 &math::Transform2d {
-                    scale: Vector2::from([400., 300.]),
+                    scale: Vector2::from([100., 100.]),
                     .. Default::default()
                 });
 
@@ -92,6 +92,10 @@ fn main() {
     let s_tm = time::Duration::from_millis(30);
 
     let draw = Drawer::new(50);
+
+    let mut sb = Spritebatch::new(50);
+    let sb_prog = Program::new_default_spritebatch().unwrap();
+    let sb_locs = DefaultLocations::new(&sb_prog);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -113,6 +117,7 @@ fn main() {
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
+        /*
         prog.gl_use();
         m4_proj.uniform(locs.projection());
         m4_view.uniform(locs.view());
@@ -136,7 +141,39 @@ fn main() {
         v4_color.z = 0.;
         v4_color.uniform(locs.base_color());
         draw.filled_rectangle(&locs, Vector4::new(10., 10., 50., 50.));
+        */
 
+        sb_prog.gl_use();
+        m4_proj.uniform(sb_locs.projection());
+        m4_view.uniform(sb_locs.view());
+        m4_view.uniform(sb_locs.model());
+        v4_color.x = 1.;
+        v4_color.y = 1.;
+        v4_color.z = 1.;
+        v4_color.uniform(sb_locs.base_color());
+        f_time.uniform(sb_locs.time());
+        td_diffuse.uniform(sb_locs.diffuse());
+
+        sb.begin();
+
+        let tmp = sb.pull();
+        tmp.color.x = 0.33;
+        tmp.transform.position.x = 0.;
+        tmp.transform.scale.x = 150.;
+        tmp.transform.scale.y = 150.;
+        let tmp = sb.pull();
+        tmp.color.x = 0.66;
+        tmp.transform.position.x = 50.;
+        tmp.transform.scale.x = 150.;
+        tmp.transform.scale.y = 150.;
+        let tmp = sb.pull();
+        tmp.color.x = 0.99;
+        tmp.transform.position.x = 100.;
+        tmp.transform.scale.x = 150.;
+        tmp.transform.scale.y = 150.;
+        tmp.uv.z = 0.5;
+
+        sb.end();
 
         window.swap_buffers();
         thread::sleep(s_tm);

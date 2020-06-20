@@ -101,12 +101,23 @@ impl Vertices {
     }
 }
 
+// TODO eq derives
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Transform2d {
     pub position: Vector2<GLfloat>,
     pub scale: Vector2<GLfloat>,
     pub rotation: GLfloat,
+}
+
+impl Transform2d {
+    pub fn new(x: GLfloat, y: GLfloat, sx: GLfloat, sy: GLfloat, r: GLfloat) -> Self {
+        Self {
+            position: Vector2::new(x, y),
+            scale: Vector2::new(sx, sy),
+            rotation: r,
+        }
+    }
 }
 
 impl Default for Transform2d {

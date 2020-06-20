@@ -37,12 +37,16 @@ use crate::math::{
 //     only thing you really need to check errors on is shader compile and program link
 //     other stuff is mostly data errors, out of bounds errors, etc
 //       dont bother? makes for dirty api
+//  where mutability
+//    bind and unbind dont need to be mutable?
+//    anything that does change gl properties of an object yes
 
 //
 
 // TODO use string?
 //      can just use &str maybe
 //        then have to worry abt lifetimes
+// differentiate betw shader and program err?
 #[derive(Debug)]
 pub enum GfxError {
      BadInit(String),
@@ -206,7 +210,8 @@ impl Program {
         }
     }
 
-    pub fn maru_default(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Self, GfxError> {
+    // TODO dont allow return errors ?
+    pub fn new_default(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Self, GfxError> {
         use crate::content;
 
         let vert = Shader::from_template(gl::VERTEX_SHADER,
@@ -219,6 +224,25 @@ impl Program {
             &ShaderTemplate::new(content::shaders::DEFAULT_FRAG,
                 Some(content::shaders::EXTRAS))?,
             f_effect,
+        )?;
+
+        Program::new(&[vert, frag])
+    }
+
+    // TODO dont allow return errors ?
+    pub fn new_default_spritebatch() -> Result<Self, GfxError> {
+        use crate::content;
+
+        let vert = Shader::from_template(gl::VERTEX_SHADER,
+            &ShaderTemplate::new(content::shaders::DEFAULT_VERT,
+                Some(content::shaders::EXTRAS))?,
+            Some(content::shaders::DEFAULT_SB_VERT),
+        )?;
+
+        let frag = Shader::from_template(gl::FRAGMENT_SHADER,
+            &ShaderTemplate::new(content::shaders::DEFAULT_FRAG,
+                Some(content::shaders::EXTRAS))?,
+            Some(content::shaders::DEFAULT_SB_FRAG),
         )?;
 
         Program::new(&[vert, frag])
@@ -379,6 +403,8 @@ pub struct Buffer<T> {
 impl<T> Buffer<T> {
     pub unsafe fn new(usage_type: GLenum) -> Self {
         let mut buffer = 0;
+        // TODO why isnt this unsafe
+        #[allow(unused_unsafe)]
         unsafe {
             gl::GenBuffers(1, &mut buffer);
         }
@@ -461,6 +487,7 @@ impl<T> Drop for Buffer<T> {
 
 //
 
+#[derive(Copy, Clone)]
 pub struct VertexAttribute {
     pub size: GLint,
     pub ty: GLenum,
@@ -497,7 +524,7 @@ impl VertexArray {
         }
     }
 
-    pub fn enable_attribute(&self, num: GLuint, attrib: VertexAttribute) {
+    pub fn enable_attribute(&mut self, num: GLuint, attrib: VertexAttribute) {
         unsafe {
             // note: redundant
             gl::BindVertexArray(self.vao);
@@ -513,7 +540,7 @@ impl VertexArray {
         }
     }
 
-    pub fn disble_attribute(&self, num: GLuint) {
+    pub fn disble_attribute(&mut self, num: GLuint) {
         unsafe {
             // note: redundant
             gl::BindVertexArray(self.vao);
@@ -536,6 +563,83 @@ impl Drop for VertexArray {
 
 //
 
+pub struct InstanceBuffer<T> {
+    ibo: Buffer<T>,
+    buffer: Vec<T>,
+    index: usize,
+}
+
+impl<T> InstanceBuffer<T> {
+    pub fn new(len: usize) -> Self {
+        let ibo = Buffer::empty(len, gl::STREAM_DRAW);
+        let mut buffer = Vec::with_capacity(len);
+        unsafe {
+            buffer.set_len(len);
+        }
+
+        Self {
+            ibo,
+            buffer,
+            index: 0,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.index = 0;
+    }
+
+    pub fn push(&mut self, obj: T) {
+        if self.empty_count() == 0 {
+            return;
+        }
+        self.buffer[self.index] = obj;
+        self.index += 1;
+    }
+
+    pub fn pull(&mut self) -> Option<&mut T> {
+        if self.index + 1 >= self.buffer.len() {
+            None
+        } else {
+            // TODO note: guaranteed
+            //   can do unchecked
+            let ret = self.buffer.get_mut(self.index);
+            self.index += 1;
+            ret
+        }
+    }
+
+    pub fn buffer_data(&mut self) {
+        if self.index == 0 {
+            return;
+        }
+
+        // TODO move into Buffer<T>
+        unsafe {
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.ibo.gl());
+            gl::BufferSubData(gl::ARRAY_BUFFER,
+                0,
+                (self.index * mem::size_of::<T>()) as GLsizeiptr,
+                self.buffer.as_ptr() as _);
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+        }
+    }
+
+    pub fn fill_count(&self) -> usize {
+        self.index
+    }
+
+    pub fn empty_count(&self) -> usize {
+        self.buffer.len() - self.index
+    }
+
+    pub(in crate::gfx) fn ibo(&self) -> &Buffer<T> {
+        &self.ibo
+    }
+}
+
+//
+
+/*
 pub struct TextureBuffer<T> {
     tbo: Buffer<T>,
     texture: Texture,
@@ -547,7 +651,7 @@ impl<T> TextureBuffer<T> {
     pub fn new(len: usize) -> Self {
         // TODO test works
 
-        let mut tbo = Buffer::empty(len, gl::STREAM_DRAW);
+        let tbo = Buffer::empty(len, gl::STREAM_DRAW);
         tbo.bind_to(gl::TEXTURE_BUFFER);
 
         unsafe {
@@ -617,6 +721,7 @@ impl<T> TextureBuffer<T> {
         self.buffer.len() - self.index
     }
 }
+*/
 
 //
 
@@ -710,34 +815,32 @@ pub struct Mesh {
 impl Mesh {
     pub fn new(vertices: Vertices, buffer_type: GLenum, draw_type: GLenum) -> Self {
         let mut vao = VertexArray::new();
-        let mut vbo = Buffer::from_slice(&vertices.vertices, buffer_type);
-        let mut ebo = Buffer::from_slice(&vertices.indices, buffer_type);
+        let vbo = Buffer::from_slice(&vertices.vertices, buffer_type);
+        let ebo = Buffer::from_slice(&vertices.indices, buffer_type);
 
-        vao.bind();
-        vbo.bind_to(gl::ARRAY_BUFFER);
-        vao.enable_attribute(0, VertexAttribute {
+        let base = VertexAttribute {
             size: 3,
             ty: gl::FLOAT,
             normalized: false,
             stride: mem::size_of::<Vertex>(),
             offset: offset_of!(Vertex, position),
             divisor: 0,
+        };
+
+        vao.bind();
+        vbo.bind_to(gl::ARRAY_BUFFER);
+        vao.enable_attribute(0, VertexAttribute {
+            offset: offset_of!(Vertex, position),
+            .. base
         });
         vao.enable_attribute(1, VertexAttribute {
-            size: 3,
-            ty: gl::FLOAT,
-            normalized: false,
-            stride: mem::size_of::<Vertex>(),
             offset: offset_of!(Vertex, normal),
-            divisor: 0,
+            .. base
         });
         vao.enable_attribute(2, VertexAttribute {
             size: 2,
-            ty: gl::FLOAT,
-            normalized: false,
-            stride: mem::size_of::<Vertex>(),
             offset: offset_of!(Vertex, uv),
-            divisor: 0,
+            .. base
         });
         ebo.bind_to(gl::ELEMENT_ARRAY_BUFFER);
         vao.unbind();
@@ -766,21 +869,25 @@ impl Mesh {
         }
     }
 
-    pub fn draw_instanced(&self, n: GLint) {
+    pub fn draw_instanced(&self, n: usize) {
         unsafe {
             let i_ct = self.vertices.indices.len();
 
             self.vao.bind();
             if i_ct == 0 {
-                gl::DrawArraysInstanced(self.draw_type, 0, self.vertices.vertices.len() as GLint, n);
+                gl::DrawArraysInstanced(self.draw_type, 0, self.vertices.vertices.len() as GLint, n as GLint);
             } else {
-                gl::DrawElementsInstanced(self.draw_type, i_ct as GLint, gl::UNSIGNED_INT, ptr::null(), n);
+                gl::DrawElementsInstanced(self.draw_type, i_ct as GLint, gl::UNSIGNED_INT, ptr::null(), n as GLint);
             }
             self.vao.unbind();
         }
     }
 
     // TODO buffer data
+
+    pub(in crate::gfx) unsafe fn vao_mut(&mut self) -> &mut VertexArray {
+        &mut self.vao
+    }
 }
 
 //
@@ -916,7 +1023,7 @@ pub struct DefaultLocations {
     base_color: Location,
     tx_diffuse: Location,
     tx_normal: Location,
-    sb_instance_buffer: Location,
+    // sb_instance_buffer: Location,
 }
 
 impl DefaultLocations {
@@ -930,7 +1037,7 @@ impl DefaultLocations {
             base_color:         Location::new(program, "_base_color"),
             tx_diffuse:         Location::new(program, "_tx_diffuse"),
             tx_normal:          Location::new(program, "_tx_normal"),
-            sb_instance_buffer: Location::new(program, "_sb_instance_buffer"),
+            // sb_instance_buffer: Location::new(program, "_sb_instance_buffer"),
         }
     }
 
@@ -964,45 +1071,128 @@ impl DefaultLocations {
         &self.tx_normal
     }
 
-    pub fn sb_instance_buffer(&self) -> &Location {
-        &self.sb_instance_buffer
-    }
+    // pub fn sb_instance_buffer(&self) -> &Location {
+        // &self.sb_instance_buffer
+    // }
 }
 
 //
 
-/*
+#[derive(Debug)]
+#[repr(C)]
+pub struct SbParams {
+    pub uv: Vector4<GLfloat>,
+    pub transform: Transform2d,
+    pub color: Vector4<GLfloat>,
+}
+
 // spritebatch
 //  only for quads
 //  user data somehow?
+//  fill with a default?
 pub struct Spritebatch {
-    buffer: TextureBuffer<Matrix4<GLfloat>>,
+    // pub texture: Option<&'a Texture>,
+
+    buffer: InstanceBuffer<SbParams>,
     mesh_quad: Mesh,
 }
 
 impl Spritebatch {
     pub fn new(size: usize) -> Self {
+        assert!(size != 0);
+
+        let mut mesh_quad =
+            Mesh::new(Vertices::quad(false),
+                      gl::STATIC_DRAW,
+                      gl::TRIANGLE_STRIP);
+
+
+        let buffer = InstanceBuffer::new(size);
+        let ibo = buffer.ibo();
+
+        let vao = unsafe {
+            mesh_quad.vao_mut()
+        };
+
+        let base = VertexAttribute {
+            size: 4,
+            ty: gl::FLOAT,
+            normalized: false,
+            stride: std::mem::size_of::<SbParams>(),
+            offset: 0,
+            divisor: 1,
+        };
+
+        // TODO use enum for all these
+        vao.bind();
+        ibo.bind_to(gl::ARRAY_BUFFER);
+        vao.enable_attribute(3, VertexAttribute {
+            offset: offset_of!(SbParams, uv),
+            .. base
+        });
+        vao.enable_attribute(4, VertexAttribute {
+            size: 2,
+            offset: offset_of!(SbParams, transform) +
+                    offset_of!(Transform2d, position),
+            .. base
+        });
+        vao.enable_attribute(5, VertexAttribute {
+            size: 2,
+            offset: offset_of!(SbParams, transform) +
+                    offset_of!(Transform2d, scale),
+            .. base
+        });
+        vao.enable_attribute(6, VertexAttribute {
+            size: 1,
+            offset: offset_of!(SbParams, transform) +
+                    offset_of!(Transform2d, rotation),
+            .. base
+        });
+        vao.enable_attribute(7, VertexAttribute {
+            offset: offset_of!(SbParams, color),
+            .. base
+        });
+        vao.unbind();
+
         Self {
-            buffer: TextureBuffer::new(size)?,
-            mesh_quad: Mesh::new(Vertices::quad(false),
-                                 gl::STATIC_DRAW,
-                                 gl::TRIANGLE_STRIP).unwrap(),
+            buffer,
+            mesh_quad,
         }
     }
 
     pub fn begin(&mut self) {
+        self.buffer.clear();
+        unsafe {
+            gl::Disable(gl::DEPTH_TEST);
+        }
     }
 
     pub fn draw(&mut self) {
+        self.buffer.buffer_data();
+        self.mesh_quad.draw_instanced(self.buffer.fill_count());
+        self.buffer.clear();
     }
 
     pub fn end(&mut self) {
+        if self.buffer.fill_count() > 0 {
+            self.draw();
+        }
     }
 
-    fn put(&mut self) {
+    // TODO is this a good interface?
+    pub fn pull(&mut self) -> &mut SbParams {
+        if self.buffer.empty_count() == 0 {
+            self.draw();
+        }
+        let ret = self.buffer.pull().unwrap();
+        *ret = SbParams {
+            uv: Vector4::new(0., 0., 1., 1.),
+            transform: Transform2d::default(),
+            color: Vector4::new(1., 1., 1., 1.),
+        };
+        ret
     }
 }
-*/
 
 //
 

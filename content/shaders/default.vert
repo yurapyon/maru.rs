@@ -4,6 +4,12 @@ layout (location = 0) in vec3 _ext_vertex;
 layout (location = 1) in vec3 _ext_normal;
 layout (location = 2) in vec2 _ext_uv;
 
+layout (location = 3) in vec4  _ext_sb_uv;
+layout (location = 4) in vec2  _ext_sb_position;
+layout (location = 5) in vec2  _ext_sb_scale;
+layout (location = 6) in float _ext_sb_rotation;
+layout (location = 7) in vec4  _ext_sb_color;
+
 // basic
 uniform mat4 _projection;
 uniform mat4 _view;
@@ -17,7 +23,6 @@ out vec3 _normal;
 
 // spritebatch
 mat4 _sb_model;
-uniform samplerBuffer _sb_instance_buffer;
 out vec4 _sb_color;
 out vec2 _sb_uv;
 
@@ -35,36 +40,32 @@ mat4 mat4_from_transform2d(float x, float y, float sx, float sy, float r) {
 }
 
 void ready_spritebatch() {
-    int i_at = gl_InstanceID * 4;
-
-    // uv_coords   [x1 y1 x2 y2]
-    // vert_color  [ r  g  b  a]
-    // trans_scale [ x  y sx sy]
-    // last        [ r  _  _  _]
-    vec4 uv_coords   = texelFetch(_sb_instance_buffer, i_at);
-    _sb_color        = texelFetch(_sb_instance_buffer, i_at + 1);
-    vec4 trans_scale = texelFetch(_sb_instance_buffer, i_at + 2);
-    vec4 last        = texelFetch(_sb_instance_buffer, i_at + 3);
-
     // TODO flip uvs
 
-    // get uv point from tex_coords
+    // generate actual uv point for each vertex
+    //   based on input rect
+    // _ext_sb_uv => vec4(x1 y1 x2 y2)
     switch (gl_VertexID) {
     case 0:
-        _sb_uv = uv_coords.zw;
+        _sb_uv = _ext_sb_uv.zw;
         break;
     case 1:
-        _sb_uv = uv_coords.zy;
+        _sb_uv = _ext_sb_uv.zy;
         break;
     case 2:
-        _sb_uv = uv_coords.xw;
+        _sb_uv = _ext_sb_uv.xw;
         break;
     case 3:
-        _sb_uv = uv_coords.xy;
+        _sb_uv = _ext_sb_uv.xy;
         break;
     }
 
-    _sb_model = mat4_from_transform2d(trans_scale.x, trans_scale.y, trans_scale.z, trans_scale.w, last.x);
+    _sb_color = _ext_sb_color;
+    _sb_model = mat4_from_transform2d(_ext_sb_position.x,
+                                      _ext_sb_position.y,
+                                      _ext_sb_scale.x,
+                                      _ext_sb_scale.y,
+                                      _ext_sb_rotation);
 }
 
 @

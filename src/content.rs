@@ -11,13 +11,13 @@ pub mod shaders {
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
                              "/content/shaders/lib.incl.glsl"));
 
-    pub const DEFAULT_SB_FRAG: &str =
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
-                             "/content/shaders/spritebatch.incl.frag"));
-
     pub const DEFAULT_SB_VERT: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
                              "/content/shaders/spritebatch.incl.vert"));
+
+    pub const DEFAULT_SB_FRAG: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+                             "/content/shaders/spritebatch.incl.frag"));
 }
 
 pub mod image {
