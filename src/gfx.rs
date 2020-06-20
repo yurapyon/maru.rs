@@ -255,9 +255,8 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn new(image: &RgbaImage) -> Result<Self, GfxError> {
+    pub fn new(image: &RgbaImage) -> Self {
         unsafe {
-            // TODO check errors
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D, texture);
@@ -292,17 +291,17 @@ impl Texture {
 
             ret.set_wrap(gl::REPEAT, gl::REPEAT);
             ret.set_filter(gl::LINEAR, gl::LINEAR);
-            Ok(ret)
+            ret
         }
     }
 
-    pub fn from_gl_texture(texture: GLuint) -> Result<Self, GfxError> {
+    pub fn from_gl_texture(texture: GLuint) -> Self {
         let (width, height) = Self::_get_dimensions(texture, 1);
-        Ok(Self {
+        Self {
             texture,
             width,
             height,
-        })
+        }
     }
 
     pub fn set_wrap(&mut self, s: GLenum, t: GLenum) {
@@ -378,32 +377,32 @@ pub struct Buffer<T> {
 }
 
 impl<T> Buffer<T> {
-    pub unsafe fn new(usage_type: GLenum) -> Result<Self, GfxError> {
+    pub unsafe fn new(usage_type: GLenum) -> Self {
         let mut buffer = 0;
         unsafe {
             gl::GenBuffers(1, &mut buffer);
         }
-        Ok(Self {
+        Self {
             buffer,
             usage_type,
             _phantom: PhantomData,
-        })
+        }
     }
 
-    pub fn empty(len: usize, usage_type: GLenum) -> Result<Self, GfxError> {
+    pub fn empty(len: usize, usage_type: GLenum) -> Self {
         let mut ret = unsafe {
-            Self::new(usage_type)?
+            Self::new(usage_type)
         };
         ret.buffer_null(len);
-        Ok(ret)
+        ret
     }
 
-    pub fn from_slice(slice: &[T], usage_type: GLenum) -> Result<Self, GfxError> {
+    pub fn from_slice(slice: &[T], usage_type: GLenum) -> Self {
         let mut ret = unsafe {
-            Self::new(usage_type)?
+            Self::new(usage_type)
         };
         ret.buffer_data(slice);
-        Ok(ret)
+        ret
     }
 
     pub fn buffer_null(&mut self, len: usize) {
@@ -476,14 +475,14 @@ pub struct VertexArray {
 }
 
 impl VertexArray {
-    pub fn new() -> Result<Self, GfxError> {
+    pub fn new() -> Self {
         let mut vao = 0;
         unsafe {
             gl::GenVertexArrays(1, &mut vao);
         }
-        Ok(Self {
+        Self {
             vao
-        })
+        }
     }
 
     pub fn bind(&self) {
@@ -545,10 +544,10 @@ pub struct TextureBuffer<T> {
 }
 
 impl<T> TextureBuffer<T> {
-    pub fn new(len: usize) -> Result<Self, GfxError> {
+    pub fn new(len: usize) -> Self {
         // TODO test works
 
-        let mut tbo = Buffer::empty(len, gl::STREAM_DRAW)?;
+        let mut tbo = Buffer::empty(len, gl::STREAM_DRAW);
         tbo.bind_to(gl::TEXTURE_BUFFER);
 
         unsafe {
@@ -574,12 +573,12 @@ impl<T> TextureBuffer<T> {
             let mut buffer = Vec::with_capacity(len);
             buffer.set_len(len);
 
-            Ok(Self {
+            Self {
                 tbo,
-                texture: Texture::from_gl_texture(texture)?,
+                texture: Texture::from_gl_texture(texture),
                 index: 0,
                 buffer,
-            })
+            }
         }
     }
 
@@ -628,13 +627,13 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    pub fn new(width: u32, height: u32) -> Result<Self, GfxError> {
+    pub fn new(width: u32, height: u32) -> Self {
         let mut img = RgbaImage::new(width, height);
         for p in img.pixels_mut() {
             p[3] = 255;
         }
 
-        let texture = Texture::new(&img)?;
+        let texture = Texture::new(&img);
 
         unsafe {
             let mut rbo = 0;
@@ -657,11 +656,11 @@ impl Canvas {
                 rbo);
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
 
-            Ok(Self {
+            Self {
                 texture,
                 fbo,
                 rbo,
-            })
+            }
         }
     }
 
@@ -709,10 +708,10 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn new(vertices: Vertices, buffer_type: GLenum, draw_type: GLenum) -> Result<Self, GfxError> {
-        let mut vao = VertexArray::new()?;
-        let mut vbo = Buffer::from_slice(&vertices.vertices, buffer_type)?;
-        let mut ebo = Buffer::from_slice(&vertices.indices, buffer_type)?;
+    pub fn new(vertices: Vertices, buffer_type: GLenum, draw_type: GLenum) -> Self {
+        let mut vao = VertexArray::new();
+        let mut vbo = Buffer::from_slice(&vertices.vertices, buffer_type);
+        let mut ebo = Buffer::from_slice(&vertices.indices, buffer_type);
 
         vao.bind();
         vbo.bind_to(gl::ARRAY_BUFFER);
@@ -743,14 +742,14 @@ impl Mesh {
         ebo.bind_to(gl::ELEMENT_ARRAY_BUFFER);
         vao.unbind();
 
-        Ok(Self {
+        Self {
             vertices,
             vao,
             vbo,
             ebo,
             buffer_type,
             draw_type,
-        })
+        }
     }
 
     pub fn draw(&self) {
@@ -972,6 +971,7 @@ impl DefaultLocations {
 
 //
 
+/*
 // spritebatch
 //  only for quads
 //  user data somehow?
@@ -981,14 +981,13 @@ pub struct Spritebatch {
 }
 
 impl Spritebatch {
-    pub fn new(size: usize) -> Result<Self, GfxError> {
-    // TODO handle errors
-        Ok(Self {
+    pub fn new(size: usize) -> Self {
+        Self {
             buffer: TextureBuffer::new(size)?,
             mesh_quad: Mesh::new(Vertices::quad(false),
                                  gl::STATIC_DRAW,
                                  gl::TRIANGLE_STRIP).unwrap(),
-        })
+        }
     }
 
     pub fn begin(&mut self) {
@@ -1003,6 +1002,7 @@ impl Spritebatch {
     fn put(&mut self) {
     }
 }
+*/
 
 //
 
@@ -1020,17 +1020,16 @@ pub struct Drawer {
 }
 
 impl Drawer {
-    // TODO handle errors
     pub fn new(circle_resolution: usize) -> Self {
         let img = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
         Self {
             mesh_quad: Mesh::new(Vertices::quad(false),
                                  gl::STATIC_DRAW,
-                                 gl::TRIANGLE_STRIP).unwrap(),
+                                 gl::TRIANGLE_STRIP),
             mesh_circle: Mesh::new(Vertices::circle(circle_resolution),
                                    gl::STATIC_DRAW,
-                                   gl::TRIANGLE_FAN).unwrap(),
-            tex_white: Texture::new(&img).unwrap(),
+                                   gl::TRIANGLE_FAN),
+            tex_white: Texture::new(&img),
         }
     }
 

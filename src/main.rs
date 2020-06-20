@@ -60,11 +60,11 @@ fn main() {
     println!("{:?}", env::current_dir());
     println!("{:?}", env!("CARGO_MANIFEST_DIR"));
     let img = image::load_from_memory(content::image::MAHOU).unwrap().to_rgba();
-    let tex = Texture::new(&img).unwrap();
+    let tex = Texture::new(&img);
 
     let quad_mesh = Mesh::new(math::Vertices::quad(false),
         gl::STATIC_DRAW,
-        gl::TRIANGLE_STRIP).unwrap();
+        gl::TRIANGLE_STRIP);
 
     let locs = DefaultLocations::new(&prog);
 
