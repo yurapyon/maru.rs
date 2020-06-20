@@ -44,6 +44,9 @@ fn main() {
 
     unsafe {
         gl::Viewport(0, 0, 600, 400);
+        gl::Enable(gl::BLEND);
+        gl::BlendEquation(gl::FUNC_ADD);
+        gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
     }
 
     let prog = Program::new_default(None,
@@ -96,6 +99,12 @@ fn main() {
     let mut sb = Spritebatch::new(50);
     let sb_prog = Program::new_default_spritebatch().unwrap();
     let sb_locs = DefaultLocations::new(&sb_prog);
+
+    let fn_img = image::load_from_memory(content::image::SMALL_FONT).unwrap().to_rgba();
+    let font = BitmapFont::new(&fn_img,
+        " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890[](){}=+-/^$@#*~%_<>\"'?!|\\&`.,:;");
+    let fn_tex = font.texture();
+    let fn_tex_uni = TextureData::diffuse(fn_tex);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -174,6 +183,9 @@ fn main() {
         tmp.uv.z = 0.5;
 
         sb.end();
+
+        fn_tex_uni.uniform(sb_locs.diffuse());
+        sb.print(&font, "hello");
 
         window.swap_buffers();
         thread::sleep(s_tm);

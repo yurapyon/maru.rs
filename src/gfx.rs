@@ -852,6 +852,7 @@ impl Mesh {
 //       if location can not be found
 //       just ignore it gracefully
 //         or have separate 'new' function that reports error
+#[derive(Copy, Clone)]
 pub struct Location {
     location: GLint
 }
@@ -875,11 +876,11 @@ impl Location {
 //
 
 pub trait Uniform {
-    fn uniform(&self, loc: &Location);
+    fn uniform(&self, loc: Location);
 }
 
 impl Uniform for GLfloat {
-    fn uniform(&self, loc: &Location) {
+    fn uniform(&self, loc: Location) {
         unsafe {
             gl::Uniform1f(loc.location(), *self);
         }
@@ -887,7 +888,7 @@ impl Uniform for GLfloat {
 }
 
 impl Uniform for bool {
-    fn uniform(&self, loc: &Location) {
+    fn uniform(&self, loc: Location) {
         unsafe {
             gl::Uniform1i(loc.location(), if *self { 1 } else { 0 });
         }
@@ -895,7 +896,7 @@ impl Uniform for bool {
 }
 
 impl Uniform for GLint {
-    fn uniform(&self, loc: &Location) {
+    fn uniform(&self, loc: Location) {
         unsafe {
             gl::Uniform1i(loc.location(), *self);
         }
@@ -903,7 +904,7 @@ impl Uniform for GLint {
 }
 
 impl Uniform for GLuint {
-    fn uniform(&self, loc: &Location) {
+    fn uniform(&self, loc: Location) {
         unsafe {
             gl::Uniform1ui(loc.location(), *self);
         }
@@ -911,7 +912,7 @@ impl Uniform for GLuint {
 }
 
 impl Uniform for Vector4<GLfloat> {
-    fn uniform(&self, loc: &Location) {
+    fn uniform(&self, loc: Location) {
         unsafe {
             let buf: &[GLfloat; 4] = self.as_ref();
             gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
@@ -920,7 +921,7 @@ impl Uniform for Vector4<GLfloat> {
 }
 
 impl Uniform for Matrix4<GLfloat> {
-    fn uniform(&self, loc: &Location) {
+    fn uniform(&self, loc: Location) {
         unsafe {
             let buf: &[GLfloat; 16] = self.as_ref();
             gl::UniformMatrix4fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
@@ -953,7 +954,7 @@ impl<'a> TextureData<'a> {
 }
 
 impl Uniform for TextureData<'_> {
-    fn uniform(&self, loc: &Location) {
+    fn uniform(&self, loc: Location) {
         (self.select - gl::TEXTURE0).uniform(loc);
         unsafe {
             gl::ActiveTexture(self.select);
@@ -973,76 +974,185 @@ pub struct DefaultLocations {
     base_color: Location,
     tx_diffuse: Location,
     tx_normal: Location,
-    // sb_instance_buffer: Location,
 }
 
 impl DefaultLocations {
     pub fn new(program: &Program) -> Self {
         Self {
-            projection:         Location::new(program, "_projection"),
-            view:               Location::new(program, "_view"),
-            model:              Location::new(program, "_model"),
-            time:               Location::new(program, "_time"),
-            flip_uvs:           Location::new(program, "_flip_uvs"),
-            base_color:         Location::new(program, "_base_color"),
-            tx_diffuse:         Location::new(program, "_tx_diffuse"),
-            tx_normal:          Location::new(program, "_tx_normal"),
-            // sb_instance_buffer: Location::new(program, "_sb_instance_buffer"),
+            projection: Location::new(program, "_projection"),
+            view:       Location::new(program, "_view"),
+            model:      Location::new(program, "_model"),
+            time:       Location::new(program, "_time"),
+            flip_uvs:   Location::new(program, "_flip_uvs"),
+            base_color: Location::new(program, "_base_color"),
+            tx_diffuse: Location::new(program, "_tx_diffuse"),
+            tx_normal:  Location::new(program, "_tx_normal"),
         }
     }
 
     // TODO return ref?
     //   yea? because Uniform::uniform takes ref
-    pub fn projection(&self) -> &Location {
-        &self.projection
+    pub fn projection(&self) -> Location {
+        self.projection
     }
 
-    pub fn view(&self) -> &Location {
-        &self.view
+    pub fn view(&self) -> Location {
+        self.view
     }
 
-    pub fn model(&self) -> &Location {
-        &self.model
+    pub fn model(&self) -> Location {
+        self.model
     }
 
-    pub fn time(&self) -> &Location {
-        &self.time
+    pub fn time(&self) -> Location {
+        self.time
     }
 
-    pub fn base_color(&self) -> &Location {
-        &self.base_color
+    pub fn base_color(&self) -> Location {
+        self.base_color
     }
 
-    pub fn diffuse(&self) -> &Location {
-        &self.tx_diffuse
+    pub fn diffuse(&self) -> Location {
+        self.tx_diffuse
     }
 
-    pub fn normal(&self) -> &Location {
-        &self.tx_normal
+    pub fn normal(&self) -> Location {
+        self.tx_normal
     }
-
-    // pub fn sb_instance_buffer(&self) -> &Location {
-        // &self.sb_instance_buffer
-    // }
 }
 
 //
 
-// texture region
-// spritesheet
-// bitmap font
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct TextureRegion {
+    // note: uses u32 because image crate uses u32
+    pub x1: u32,
+    pub y1: u32,
+    pub x2: u32,
+    pub y2: u32,
+}
+
+impl TextureRegion {
+    pub fn new(x1: u32, y1: u32, x2: u32, y2: u32) -> Self {
+        Self {
+            x1,
+            y1,
+            x2,
+            y2,
+        }
+    }
+
+    pub fn normalized(&self, tex: &Texture) -> Vector4<GLfloat> {
+        let fl_w = tex.width() as GLfloat;
+        let fl_h = tex.height() as GLfloat;
+        Vector4::new(
+            self.x1 as GLfloat / fl_w,
+            self.y1 as GLfloat / fl_h,
+            self.x2 as GLfloat / fl_w,
+            self.y2 as GLfloat / fl_h,
+        )
+    }
+
+    pub fn width(&self) -> u32 {
+        self.x2 - self.x1
+    }
+
+    pub fn height(&self) -> u32 {
+        self.y2 - self.y1
+    }
+}
+
+impl Default for TextureRegion {
+    fn default() -> Self {
+        Self::new(0, 0, 0, 0)
+    }
+}
+
+// TODO
+// type UVRect
+// type Color
+//   etc
+//    = Vector4<GLfloat>
+
+// just use ascii for now
+// maybe in the future use utf8
+//   but the lookup table would have to be different
+//   idk
+//     some type of convert string to vec<&textureRegion>
+pub struct BitmapFont {
+    texture: Texture,
+    regions: Vec<TextureRegion>,
+    uv_regions: Vec<Vector4<GLfloat>>,
+}
+
+impl BitmapFont {
+    pub fn new(image: &RgbaImage, alphabet: &str) -> Self {
+        let i_height = image.height();
+        let base_color = image.get_pixel(0, 0);
+
+        let top_row = image.enumerate_rows().next().unwrap().1;
+        let breaks =
+            top_row.filter_map(| (x, _y, px) | {
+                if px == base_color {
+                    Some(x)
+                } else {
+                    None
+                }
+            });
+        let breaks_cl = breaks.clone();
+        let pairs =
+            breaks.zip(breaks_cl.skip(1))
+                  .map(| (x1, x2) | TextureRegion::new(x1 + 1, 0, x2, i_height))
+                  .zip(alphabet.chars());
+
+        let mut regions = Vec::with_capacity(256);
+        // set to 0,0,1,1 so if char is not found, uv is base_color
+        regions.resize(256, TextureRegion::new(0, 0, 1, 1));
+
+        for (region, ch) in pairs {
+            regions[ch as usize] = region;
+        }
+
+        let mut texture = Texture::new(image);
+        texture.set_wrap(gl::CLAMP_TO_EDGE, gl::CLAMP_TO_EDGE);
+        texture.set_filter(gl::NEAREST, gl::NEAREST);
+
+        let uv_regions = regions.iter()
+                                .map(| region | region.normalized(&texture))
+                                .collect();
+
+        Self {
+            texture,
+            regions,
+            uv_regions,
+        }
+    }
+
+    pub fn texture(&self) -> &Texture {
+        &self.texture
+    }
+
+    pub fn region(&self, ch: char) -> TextureRegion {
+        self.regions[ch as usize]
+    }
+
+    pub fn uv_region(&self, ch: char) -> Vector4<GLfloat> {
+        self.uv_regions[ch as usize]
+    }
+}
 
 //
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct SbParams {
+pub struct SbSprite {
     pub uv: Vector4<GLfloat>,
     pub transform: Transform2d,
     pub color: Vector4<GLfloat>,
 }
 
-impl Default for SbParams {
+impl Default for SbSprite {
     fn default() -> Self {
         Self {
             uv: Vector4::new(0., 0., 1., 1.),
@@ -1053,7 +1163,7 @@ impl Default for SbParams {
 }
 
 pub struct Spritebatch {
-    buffer: InstanceBuffer<SbParams>,
+    buffer: InstanceBuffer<SbSprite>,
     mesh_quad: Mesh,
 }
 
@@ -1078,7 +1188,7 @@ impl Spritebatch {
             size: 4,
             ty: gl::FLOAT,
             normalized: false,
-            stride: std::mem::size_of::<SbParams>(),
+            stride: std::mem::size_of::<SbSprite>(),
             offset: 0,
             divisor: 1,
         };
@@ -1087,29 +1197,29 @@ impl Spritebatch {
         vao.bind();
         ibo.bind_to(gl::ARRAY_BUFFER);
         vao.enable_attribute(3, VertexAttribute {
-            offset: offset_of!(SbParams, uv),
+            offset: offset_of!(SbSprite, uv),
             .. base
         });
         vao.enable_attribute(4, VertexAttribute {
             size: 2,
-            offset: offset_of!(SbParams, transform) +
+            offset: offset_of!(SbSprite, transform) +
                     offset_of!(Transform2d, position),
             .. base
         });
         vao.enable_attribute(5, VertexAttribute {
             size: 2,
-            offset: offset_of!(SbParams, transform) +
+            offset: offset_of!(SbSprite, transform) +
                     offset_of!(Transform2d, scale),
             .. base
         });
         vao.enable_attribute(6, VertexAttribute {
             size: 1,
-            offset: offset_of!(SbParams, transform) +
+            offset: offset_of!(SbSprite, transform) +
                     offset_of!(Transform2d, rotation),
             .. base
         });
         vao.enable_attribute(7, VertexAttribute {
-            offset: offset_of!(SbParams, color),
+            offset: offset_of!(SbSprite, color),
             .. base
         });
         vao.unbind();
@@ -1145,13 +1255,31 @@ impl Spritebatch {
     //   ulitmately copies defaults first then  returns ref
     //     c version allows you to change data then copy
     //     pretty much same thing, unless you map the buffer and write to it directly
-    pub fn pull(&mut self) -> &mut SbParams {
+    pub fn pull(&mut self) -> &mut SbSprite {
         if self.buffer.empty_count() == 0 {
             self.draw();
         }
         let ret = self.buffer.pull().unwrap();
         *ret = Default::default();
         ret
+    }
+
+    pub fn print(&mut self, font: &BitmapFont, text: &str) {
+        self.begin();
+
+        let mut x = 0.;
+        let font_h = font.texture().height() as GLfloat;
+        for ch in text.chars() {
+            let region_w = font.region(ch).width() as GLfloat;
+            let sp = self.pull();
+            sp.uv = font.uv_region(ch);
+            sp.transform.position.x = x;
+            sp.transform.scale.x = region_w;
+            sp.transform.scale.y = font_h;
+            x += region_w;
+        }
+
+        self.end();
     }
 }
 
