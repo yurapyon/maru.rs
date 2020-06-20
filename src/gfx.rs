@@ -401,7 +401,7 @@ pub struct Buffer<T> {
 }
 
 impl<T> Buffer<T> {
-    pub unsafe fn new(usage_type: GLenum) -> Self {
+    unsafe fn new(usage_type: GLenum) -> Self {
         let mut buffer = 0;
         // TODO why isnt this unsafe
         #[allow(unused_unsafe)]
@@ -453,12 +453,20 @@ impl<T> Buffer<T> {
         }
     }
 
-    // TODO
-    /*
-    pub fn buffer_sub_data(&mut self, data: Vec<T>) {
-    */
+    pub fn buffer_sub_data(&self, offset: usize, data: &[T]) {
+        unsafe {
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
+            gl::BufferSubData(gl::ARRAY_BUFFER,
+                offset as GLintptr,
+                (data.len() * mem::size_of::<T>()) as GLsizeiptr,
+                data.as_ptr() as _);
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+        }
+    }
 
     // TODO map buffer
+    //   could use some other type that automatically unmaps when leaving scope
+    //   like mutex lock
 
     pub fn bind_to(&self, target: GLenum) {
         unsafe {
@@ -597,14 +605,14 @@ impl<T> InstanceBuffer<T> {
     }
 
     pub fn pull(&mut self) -> Option<&mut T> {
-        if self.index + 1 >= self.buffer.len() {
+        if self.index >= self.buffer.len() {
             None
         } else {
-            // TODO note: guaranteed
-            //   can do unchecked
-            let ret = self.buffer.get_mut(self.index);
-            self.index += 1;
-            ret
+            unsafe {
+                let ret = self.buffer.get_unchecked_mut(self.index);
+                self.index += 1;
+                Some(ret)
+            }
         }
     }
 
@@ -613,15 +621,7 @@ impl<T> InstanceBuffer<T> {
             return;
         }
 
-        // TODO move into Buffer<T>
-        unsafe {
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.ibo.gl());
-            gl::BufferSubData(gl::ARRAY_BUFFER,
-                0,
-                (self.index * mem::size_of::<T>()) as GLsizeiptr,
-                self.buffer.as_ptr() as _);
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-        }
+        self.ibo.buffer_sub_data(0, &self.buffer[0..self.index]);
     }
 
     pub fn fill_count(&self) -> usize {
@@ -1008,12 +1008,6 @@ impl Uniform for TextureData<'_> {
 
 //
 
-// texture region
-// spritesheet
-// bitmap font
-
-//
-
 pub struct DefaultLocations {
     projection: Location,
     view: Location,
@@ -1078,6 +1072,12 @@ impl DefaultLocations {
 
 //
 
+// texture region
+// spritesheet
+// bitmap font
+
+//
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct SbParams {
@@ -1086,13 +1086,17 @@ pub struct SbParams {
     pub color: Vector4<GLfloat>,
 }
 
-// spritebatch
-//  only for quads
-//  user data somehow?
-//  fill with a default?
-pub struct Spritebatch {
-    // pub texture: Option<&'a Texture>,
+impl Default for SbParams {
+    fn default() -> Self {
+        Self {
+            uv: Vector4::new(0., 0., 1., 1.),
+            transform: Default::default(),
+            color: Vector4::new(1., 1., 1., 1.),
+        }
+    }
+}
 
+pub struct Spritebatch {
     buffer: InstanceBuffer<SbParams>,
     mesh_quad: Mesh,
 }
@@ -1180,16 +1184,17 @@ impl Spritebatch {
     }
 
     // TODO is this a good interface?
+    //      its ok
+    //          maybe just return the ref and have the caller set defaults as necessary ?
+    //   ulitmately copies defaults first then  returns ref
+    //     c version allows you to change data then copy
+    //     pretty much same thing, unless you map the buffer and write to it directly
     pub fn pull(&mut self) -> &mut SbParams {
         if self.buffer.empty_count() == 0 {
             self.draw();
         }
         let ret = self.buffer.pull().unwrap();
-        *ret = SbParams {
-            uv: Vector4::new(0., 0., 1., 1.),
-            transform: Transform2d::default(),
-            color: Vector4::new(1., 1., 1., 1.),
-        };
+        *ret = Default::default();
         ret
     }
 }
