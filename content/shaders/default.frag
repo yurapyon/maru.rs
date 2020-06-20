@@ -3,9 +3,10 @@
 // basic
 in vec2 _uv_coord;
 in float _tm;
-uniform sampler2D _diffuse;
-// TODO
-// unifrom sampler2D _normal;
+in vec3 _normal;
+
+uniform sampler2D _tx_diffuse;
+uniform sampler2D _tx_normal;
 uniform vec4 _base_color;
 
 // spritebatch
@@ -19,7 +20,7 @@ float _time;
 @
 
 vec4 effect() {
-  return _base_color * texture2D(_diffuse, _uv_coord);
+  return _base_color * texture2D(_tx_diffuse, _uv_coord);
 }
 
 @

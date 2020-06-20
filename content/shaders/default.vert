@@ -1,8 +1,8 @@
 #version 330 core
 
-layout (location = 0) in vec3 _vertex;
-layout (location = 1) in vec3 _norm;
-layout (location = 2) in vec2 _uv;
+layout (location = 0) in vec3 _ext_vertex;
+layout (location = 1) in vec3 _ext_normal;
+layout (location = 2) in vec2 _ext_uv;
 
 // basic
 uniform mat4 _projection;
@@ -10,9 +10,9 @@ uniform mat4 _view;
 uniform mat4 _model;
 uniform float _time;
 uniform int _flip_uvs;
+
 out vec2 _uv_coord;
 out float _tm;
-// TODO
 out vec3 _normal;
 
 // spritebatch
@@ -20,6 +20,19 @@ mat4 _sb_model;
 uniform samplerBuffer _sb_instance_buffer;
 out vec4 _sb_color;
 out vec2 _sb_uv;
+
+mat4 mat4_from_transform2d(float x, float y, float sx, float sy, float r) {
+    mat4 ret = mat4(1.0);
+    float rc = cos(r);
+    float rs = sin(r);
+    ret[0][0] =  rc * sx;
+    ret[0][1] =  rs * sx;
+    ret[1][0] = -rs * sy;
+    ret[1][1] =  rc * sy;
+    ret[3][0] = x;
+    ret[3][1] = y;
+    return ret;
+}
 
 void ready_spritebatch() {
     int i_at = gl_InstanceID * 4;
@@ -51,31 +64,20 @@ void ready_spritebatch() {
         break;
     }
 
-    float rot = last.r;
-
-    _sb_model = mat4(1.0);
-    float rc = cos(rot);
-    float rs = sin(rot);
-    _sb_model[0][0] =  rc * trans_scale.z;
-    _sb_model[0][1] =  rs * trans_scale.z;
-    _sb_model[1][0] = -rs * trans_scale.w;
-    _sb_model[1][1] =  rc * trans_scale.w;
-    // _sb_model[3][0] = floor(trans_scale.x);
-    // _sb_model[3][1] = floor(trans_scale.y);
-    _sb_model[3][0] = trans_scale.x;
-    _sb_model[3][1] = trans_scale.y;
+    _sb_model = mat4_from_transform2d(trans_scale.x, trans_scale.y, trans_scale.z, trans_scale.w, last.x);
 }
 
 @
 
 vec4 effect() {
-  return _projection * _view * _model * vec4(_vertex, 1.0);
+  return _projection * _view * _model * vec4(_ext_vertex, 1.0);
 }
 
 @
 
 void main() {
-  _uv_coord = _flip_uvs != 0 ? vec2(_uv.x, 1 - _uv.y) : _uv;
+  _uv_coord = _flip_uvs != 0 ? vec2(_ext_uv.x, 1 - _ext_uv.y) : _ext_uv;
   _tm = _time;
+  _normal = _ext_normal;
   gl_Position = effect();
 }

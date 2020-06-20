@@ -3,6 +3,7 @@
 use std::{
     ffi::CString,
     ptr,
+    marker::PhantomData,
     mem,
 };
 
@@ -28,6 +29,14 @@ use crate::math::{
     Vertex,
     Vertices,
 };
+
+//
+
+// TODO
+//   think about errors on new
+//     only thing you really need to check errors on is shader compile and program link
+//     other stuff is mostly data errors, out of bounds errors, etc
+//       dont bother? makes for dirty api
 
 //
 
@@ -91,6 +100,8 @@ pub struct Shader {
 }
 
 impl Shader {
+    // TODO report errors better
+    //      also report warnings somehow?
     pub fn new(ty: GLenum, strings: &[&str]) -> Result<Self, GfxError> {
         let c_strs: Vec<_> = strings.iter()
             .map(| s | CString::new(s.as_bytes()).unwrap())
@@ -195,6 +206,24 @@ impl Program {
         }
     }
 
+    pub fn maru_default(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Self, GfxError> {
+        use crate::content;
+
+        let vert = Shader::from_template(gl::VERTEX_SHADER,
+            &ShaderTemplate::new(content::shaders::DEFAULT_VERT,
+                Some(content::shaders::EXTRAS))?,
+            v_effect,
+        )?;
+
+        let frag = Shader::from_template(gl::FRAGMENT_SHADER,
+            &ShaderTemplate::new(content::shaders::DEFAULT_FRAG,
+                Some(content::shaders::EXTRAS))?,
+            f_effect,
+        )?;
+
+        Program::new(&[vert, frag])
+    }
+
     pub fn gl(&self) -> GLuint {
         self.program
     }
@@ -217,14 +246,6 @@ impl Drop for Program {
 //
 
 // TODO
-
-pub struct ProgramGenerator {
-}
-
-//
-
-// TODO
-//   if local image is needed later, just add it
 //   buffer data
 //   switch width and height to usizes?
 pub struct Texture {
@@ -237,8 +258,6 @@ impl Texture {
     pub fn new(image: &RgbaImage) -> Result<Self, GfxError> {
         unsafe {
             // TODO check errors
-            //      use glpixelstore instead
-            // https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glPixelStore.xhtml
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D, texture);
@@ -352,8 +371,174 @@ impl Drop for Texture {
 
 //
 
-struct TextureBuffer<T> {
-    tbo: GLuint,
+pub struct Buffer<T> {
+    buffer: GLuint,
+    usage_type: GLenum,
+    _phantom: PhantomData<T>,
+}
+
+impl<T> Buffer<T> {
+    pub unsafe fn new(usage_type: GLenum) -> Result<Self, GfxError> {
+        let mut buffer = 0;
+        unsafe {
+            gl::GenBuffers(1, &mut buffer);
+        }
+        Ok(Self {
+            buffer,
+            usage_type,
+            _phantom: PhantomData,
+        })
+    }
+
+    pub fn empty(len: usize, usage_type: GLenum) -> Result<Self, GfxError> {
+        let mut ret = unsafe {
+            Self::new(usage_type)?
+        };
+        ret.buffer_null(len);
+        Ok(ret)
+    }
+
+    pub fn from_slice(slice: &[T], usage_type: GLenum) -> Result<Self, GfxError> {
+        let mut ret = unsafe {
+            Self::new(usage_type)?
+        };
+        ret.buffer_data(slice);
+        Ok(ret)
+    }
+
+    pub fn buffer_null(&mut self, len: usize) {
+        unsafe {
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
+            gl::BufferData(gl::ARRAY_BUFFER,
+                (len * mem::size_of::<T>()) as GLsizeiptr,
+                ptr::null(),
+                self.usage_type);
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+        }
+    }
+
+    pub fn buffer_data(&mut self, data: &[T]) {
+        unsafe {
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
+            gl::BufferData(gl::ARRAY_BUFFER,
+                (data.len() * mem::size_of::<T>()) as GLsizeiptr,
+                data.as_ptr() as _,
+                self.usage_type);
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+        }
+    }
+
+    // TODO
+    /*
+    pub fn buffer_sub_data(&mut self, data: Vec<T>) {
+    */
+
+    // TODO map buffer
+
+    pub fn bind_to(&self, target: GLenum) {
+        unsafe {
+            gl::BindBuffer(target, self.buffer);
+        }
+    }
+
+    pub fn unbind_from(&self, target: GLenum) {
+        unsafe {
+            gl::BindBuffer(target, 0);
+        }
+    }
+
+    pub fn gl(&self) -> GLuint {
+        self.buffer
+    }
+}
+
+impl<T> Drop for Buffer<T> {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &mut self.buffer);
+        }
+    }
+}
+
+//
+
+pub struct VertexAttribute {
+    pub size: GLint,
+    pub ty: GLenum,
+    pub normalized: bool,
+    pub stride: usize,
+    pub offset: usize,
+    pub divisor: GLuint,
+}
+
+pub struct VertexArray {
+    vao: GLuint,
+}
+
+impl VertexArray {
+    pub fn new() -> Result<Self, GfxError> {
+        let mut vao = 0;
+        unsafe {
+            gl::GenVertexArrays(1, &mut vao);
+        }
+        Ok(Self {
+            vao
+        })
+    }
+
+    pub fn bind(&self) {
+        unsafe {
+            gl::BindVertexArray(self.vao);
+        }
+    }
+
+    pub fn unbind(&self) {
+        unsafe {
+            gl::BindVertexArray(0);
+        }
+    }
+
+    pub fn enable_attribute(&self, num: GLuint, attrib: VertexAttribute) {
+        unsafe {
+            // note: redundant
+            gl::BindVertexArray(self.vao);
+            gl::EnableVertexAttribArray(num);
+            gl::VertexAttribPointer(
+                num,
+                attrib.size,
+                attrib.ty,
+                if attrib.normalized { gl::TRUE } else { gl::FALSE },
+                attrib.stride as GLsizei,
+                attrib.offset as _);
+            gl::VertexAttribDivisor(num, attrib.divisor);
+        }
+    }
+
+    pub fn disble_attribute(&self, num: GLuint) {
+        unsafe {
+            // note: redundant
+            gl::BindVertexArray(self.vao);
+            gl::DisableVertexAttribArray(num);
+        }
+    }
+
+    pub fn gl(&self) -> GLuint {
+        self.vao
+    }
+}
+
+impl Drop for VertexArray {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &mut self.vao);
+        }
+    }
+}
+
+//
+
+pub struct TextureBuffer<T> {
+    tbo: Buffer<T>,
     texture: Texture,
     index: usize,
     buffer: Vec<T>,
@@ -361,7 +546,14 @@ struct TextureBuffer<T> {
 
 impl<T> TextureBuffer<T> {
     pub fn new(len: usize) -> Result<Self, GfxError> {
+        // TODO test works
+
+        let mut tbo = Buffer::empty(len, gl::STREAM_DRAW)?;
+        tbo.bind_to(gl::TEXTURE_BUFFER);
+
         unsafe {
+            /*
+            // TB<T>.tbo was GLuint
             let mut tbo = 0;
             gl::GenBuffers(1, &mut tbo);
             gl::BindBuffer(gl::TEXTURE_BUFFER, tbo);
@@ -369,11 +561,12 @@ impl<T> TextureBuffer<T> {
                 (len * mem::size_of::<T>()) as GLsizeiptr,
                 ptr::null(),
                 gl::STREAM_DRAW);
+            */
 
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_BUFFER, texture);
-            gl::TexBuffer(gl::TEXTURE_BUFFER, gl::RGBA32F, tbo);
+            gl::TexBuffer(gl::TEXTURE_BUFFER, gl::RGBA32F, tbo.gl());
 
             gl::BindTexture(gl::TEXTURE_BUFFER, 0);
             gl::BindBuffer(gl::TEXTURE_BUFFER, 0);
@@ -408,7 +601,7 @@ impl<T> TextureBuffer<T> {
         }
 
         unsafe {
-            gl::BindBuffer(gl::TEXTURE_BUFFER, self.tbo);
+            gl::BindBuffer(gl::TEXTURE_BUFFER, self.tbo.gl());
             gl::BufferSubData(gl::TEXTURE_BUFFER,
                 0,
                 (self.index * mem::size_of::<T>()) as GLsizeiptr,
@@ -423,14 +616,6 @@ impl<T> TextureBuffer<T> {
 
     pub fn empty_count(&self) -> usize {
         self.buffer.len() - self.index
-    }
-}
-
-impl<T> Drop for TextureBuffer<T> {
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteBuffers(1, &mut self.tbo);
-        }
     }
 }
 
@@ -516,77 +701,69 @@ impl Drop for Canvas {
 
 pub struct Mesh {
     vertices: Vertices,
-    vao: GLuint,
-    vbo: GLuint,
-    ebo: GLuint,
+    vao: VertexArray,
+    vbo: Buffer<Vertex>,
+    ebo: Buffer<GLuint>,
     buffer_type: GLenum,
     draw_type: GLenum,
 }
 
 impl Mesh {
     pub fn new(vertices: Vertices, buffer_type: GLenum, draw_type: GLenum) -> Result<Self, GfxError> {
-        unsafe {
-            let mut vao = 0;
-            let mut vbo = 0;
-            let mut ebo = 0;
+        let mut vao = VertexArray::new()?;
+        let mut vbo = Buffer::from_slice(&vertices.vertices, buffer_type)?;
+        let mut ebo = Buffer::from_slice(&vertices.indices, buffer_type)?;
 
-            gl::GenVertexArrays(1, &mut vao);
-            gl::GenBuffers(1, &mut vbo);
-            gl::GenBuffers(1, &mut ebo);
+        vao.bind();
+        vbo.bind_to(gl::ARRAY_BUFFER);
+        vao.enable_attribute(0, VertexAttribute {
+            size: 3,
+            ty: gl::FLOAT,
+            normalized: false,
+            stride: mem::size_of::<Vertex>(),
+            offset: offset_of!(Vertex, position),
+            divisor: 0,
+        });
+        vao.enable_attribute(1, VertexAttribute {
+            size: 3,
+            ty: gl::FLOAT,
+            normalized: false,
+            stride: mem::size_of::<Vertex>(),
+            offset: offset_of!(Vertex, normal),
+            divisor: 0,
+        });
+        vao.enable_attribute(2, VertexAttribute {
+            size: 2,
+            ty: gl::FLOAT,
+            normalized: false,
+            stride: mem::size_of::<Vertex>(),
+            offset: offset_of!(Vertex, uv),
+            divisor: 0,
+        });
+        ebo.bind_to(gl::ELEMENT_ARRAY_BUFFER);
+        vao.unbind();
 
-            gl::BindVertexArray(vao);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-            gl::BufferData(gl::ARRAY_BUFFER,
-                (vertices.vertices.len() * mem::size_of::<Vertex>()) as isize,
-                vertices.vertices.as_ptr() as _,
-                buffer_type);
-
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
-            gl::BufferData(gl::ELEMENT_ARRAY_BUFFER,
-                (vertices.indices.len() * mem::size_of::<GLuint>()) as isize,
-                vertices.indices.as_ptr() as _,
-                buffer_type);
-
-            gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE,
-                mem::size_of::<Vertex>() as GLsizei,
-                offset_of!(Vertex, position) as _);
-
-            gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE,
-                mem::size_of::<Vertex>() as GLsizei,
-                offset_of!(Vertex, normal) as _);
-
-            gl::VertexAttribPointer(2, 2, gl::FLOAT, gl::FALSE,
-                mem::size_of::<Vertex>() as GLsizei,
-                offset_of!(Vertex, uv) as _);
-
-            gl::EnableVertexAttribArray(0);
-            gl::EnableVertexAttribArray(1);
-            gl::EnableVertexAttribArray(2);
-
-            gl::BindVertexArray(0);
-
-            Ok(Self {
-                vertices,
-                vao,
-                vbo,
-                ebo,
-                buffer_type,
-                draw_type,
-            })
-        }
+        Ok(Self {
+            vertices,
+            vao,
+            vbo,
+            ebo,
+            buffer_type,
+            draw_type,
+        })
     }
 
     pub fn draw(&self) {
         unsafe {
             let i_ct = self.vertices.indices.len();
 
-            gl::BindVertexArray(self.vao);
+            self.vao.bind();
             if i_ct == 0 {
                 gl::DrawArrays(self.draw_type, 0, self.vertices.vertices.len() as GLint);
             } else {
                 gl::DrawElements(self.draw_type, i_ct as GLint, gl::UNSIGNED_INT, ptr::null());
             }
-            gl::BindVertexArray(0);
+            self.vao.unbind();
         }
     }
 
@@ -594,27 +771,17 @@ impl Mesh {
         unsafe {
             let i_ct = self.vertices.indices.len();
 
-            gl::BindVertexArray(self.vao);
+            self.vao.bind();
             if i_ct == 0 {
                 gl::DrawArraysInstanced(self.draw_type, 0, self.vertices.vertices.len() as GLint, n);
             } else {
                 gl::DrawElementsInstanced(self.draw_type, i_ct as GLint, gl::UNSIGNED_INT, ptr::null(), n);
             }
-            gl::BindVertexArray(0);
+            self.vao.unbind();
         }
     }
 
     // TODO buffer data
-}
-
-impl Drop for Mesh {
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteBuffers(1, &mut self.ebo);
-            gl::DeleteBuffers(1, &mut self.vbo);
-            gl::DeleteVertexArrays(1, &mut self.vao);
-        }
-    }
 }
 
 //
@@ -748,8 +915,8 @@ pub struct DefaultLocations {
     time: Location,
     flip_uvs: Location,
     base_color: Location,
-    diffuse: Location,
-    normal: Location,
+    tx_diffuse: Location,
+    tx_normal: Location,
     sb_instance_buffer: Location,
 }
 
@@ -762,8 +929,8 @@ impl DefaultLocations {
             time:               Location::new(program, "_time"),
             flip_uvs:           Location::new(program, "_flip_uvs"),
             base_color:         Location::new(program, "_base_color"),
-            diffuse:            Location::new(program, "_diffuse"),
-            normal:             Location::new(program, "_normal"),
+            tx_diffuse:         Location::new(program, "_tx_diffuse"),
+            tx_normal:          Location::new(program, "_tx_normal"),
             sb_instance_buffer: Location::new(program, "_sb_instance_buffer"),
         }
     }
@@ -791,11 +958,11 @@ impl DefaultLocations {
     }
 
     pub fn diffuse(&self) -> &Location {
-        &self.diffuse
+        &self.tx_diffuse
     }
 
     pub fn normal(&self) -> &Location {
-        &self.normal
+        &self.tx_normal
     }
 
     pub fn sb_instance_buffer(&self) -> &Location {
@@ -803,9 +970,48 @@ impl DefaultLocations {
     }
 }
 
+//
+
+// spritebatch
+//  only for quads
+//  user data somehow?
+pub struct Spritebatch {
+    buffer: TextureBuffer<Matrix4<GLfloat>>,
+    mesh_quad: Mesh,
+}
+
+impl Spritebatch {
+    pub fn new(size: usize) -> Result<Self, GfxError> {
+    // TODO handle errors
+        Ok(Self {
+            buffer: TextureBuffer::new(size)?,
+            mesh_quad: Mesh::new(Vertices::quad(false),
+                                 gl::STATIC_DRAW,
+                                 gl::TRIANGLE_STRIP).unwrap(),
+        })
+    }
+
+    pub fn begin(&mut self) {
+    }
+
+    pub fn draw(&mut self) {
+    }
+
+    pub fn end(&mut self) {
+    }
+
+    fn put(&mut self) {
+    }
+}
+
+//
+
 // this is just a bunch of functions that generate uniforms on the fly
 //   and applies them to current program
 // also has meshes and textures
+
+// poly
+// line
 
 pub struct Drawer {
     mesh_quad: Mesh,
@@ -814,6 +1020,7 @@ pub struct Drawer {
 }
 
 impl Drawer {
+    // TODO handle errors
     pub fn new(circle_resolution: usize) -> Self {
         let img = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
         Self {
@@ -852,11 +1059,3 @@ impl Drawer {
         self.sprite_px(locations, &self.tex_white, &temp);
     }
 }
-
-// default uniforms
-// default prog_gen
-//   prog_gen
-//   maru_gen_load_filepath
-
-// spritebatch
-// shapedrawer

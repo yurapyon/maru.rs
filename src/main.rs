@@ -46,27 +46,14 @@ fn main() {
         gl::Viewport(0, 0, 600, 400);
     }
 
-    let prog = {
-        let vert = Shader::from_template(gl::VERTEX_SHADER,
-            &ShaderTemplate::new(content::shaders::DEFAULT_VERT,
-                Some(content::shaders::EXTRAS)).unwrap(),
-            None,
-        ).unwrap();
-
-        let frag = Shader::from_template(gl::FRAGMENT_SHADER,
-            &ShaderTemplate::new(content::shaders::DEFAULT_FRAG,
-                Some(content::shaders::EXTRAS)).unwrap(),
+    let prog = Program::maru_default(None,
             Some("
                 vec4 effect() {
                     vec4 c = _base_color;
                     c.r = sin(_time) *0.5+1;
                     c.g = cos(_time) *0.5+1;
-                    return c * texture2D(_diffuse, _uv_coord);
-                }"),
-        ).unwrap();
-
-        Program::new(&[vert, frag])
-    }.unwrap();
+                    return c * texture2D(_tx_diffuse, _uv_coord);
+                }")).unwrap();
 
     println!("{:?}", prog);
 
