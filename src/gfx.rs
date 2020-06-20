@@ -1,3 +1,8 @@
+//! # Graphics
+//!
+//! graphics module
+
+
 #![allow(dead_code)]
 
 use std::{
@@ -41,6 +46,10 @@ use crate::math::{
 //    bind and unbind dont need to be mutable?
 //    anything that does change gl properties of an object yes
 
+// some type of GL trait?
+//   unsafe from GLuint
+//   to GLuint
+
 //
 
 // TODO use string?
@@ -54,6 +63,11 @@ pub enum GfxError {
 
 //
 
+/// Holds information about maru's default shader format.
+///
+/// # Example
+///
+/// TODO: shader template format example
 pub struct ShaderTemplate {
     header: String,
     extras: String,
@@ -62,6 +76,7 @@ pub struct ShaderTemplate {
 }
 
 impl ShaderTemplate {
+    /// Creates a new shader template.
     pub fn new(base: &str, extras: Option<&str>) -> Result<Self, GfxError> {
         if !base.is_ascii() {
             return Err(GfxError::BadInit(String::from("base string must be ascii")));
@@ -98,6 +113,8 @@ impl ShaderTemplate {
 // TODO think about using Newtype
 //    not going to be any different
 //    only thing would be optimization i guess
+
+/// Simple wrapper around an OpenGL shader.
 #[derive(Debug)]
 pub struct Shader {
     shader: GLuint,
@@ -106,6 +123,7 @@ pub struct Shader {
 impl Shader {
     // TODO report errors better
     //      also report warnings somehow?
+    /// Creates a new shader from strings.
     pub fn new(ty: GLenum, strings: &[&str]) -> Result<Self, GfxError> {
         let c_strs: Vec<_> = strings.iter()
             .map(| s | CString::new(s.as_bytes()).unwrap())
@@ -143,6 +161,7 @@ impl Shader {
         }
     }
 
+    /// Creates a new shader from a template, with optional replacement effect.
     pub fn from_template(ty: GLenum, st: &ShaderTemplate, effect: Option<&str>) -> Result<Self, GfxError> {
         let effect = match effect {
             Some(s) => s,
@@ -174,12 +193,14 @@ impl Drop for Shader {
 
 //
 
+/// Simple wrapper around an OpenGL program.
 #[derive(Debug)]
 pub struct Program {
     program: GLuint,
 }
 
 impl Program {
+    /// Creates a new program from shaders.
     pub fn new(shaders: &[Shader]) -> Result<Self, GfxError> {
         unsafe {
             let program = gl::CreateProgram();
@@ -211,6 +232,7 @@ impl Program {
     }
 
     // TODO dont allow return errors ?
+    /// Creates a default maru program, with optionial vert and frag effects.
     pub fn new_default(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Self, GfxError> {
         use crate::content;
 
@@ -230,6 +252,8 @@ impl Program {
     }
 
     // TODO dont allow return errors ?
+    /// Creates a default maru spritebatch program.
+    /// Effects cannot be suppiled as with `Program::new_default()`.
     pub fn new_default_spritebatch() -> Result<Self, GfxError> {
         use crate::content;
 
@@ -248,14 +272,15 @@ impl Program {
         Program::new(&[vert, frag])
     }
 
-    pub fn gl(&self) -> GLuint {
-        self.program
-    }
-
+    /// `gl::UseProgram();`
     pub fn gl_use(&self) {
         unsafe {
             gl::UseProgram(self.program);
         }
+    }
+
+    pub fn gl(&self) -> GLuint {
+        self.program
     }
 }
 
@@ -272,6 +297,7 @@ impl Drop for Program {
 // TODO
 //   buffer data
 //   switch width and height to usizes?
+/// Simple wrapper around an OpenGL texture.
 pub struct Texture {
     texture: GLuint,
     width: GLint,
@@ -279,6 +305,7 @@ pub struct Texture {
 }
 
 impl Texture {
+    /// Create a new texture from an RgbaImage.
     pub fn new(image: &RgbaImage) -> Self {
         unsafe {
             let mut texture = 0;
@@ -319,15 +346,7 @@ impl Texture {
         }
     }
 
-    pub fn from_gl_texture(texture: GLuint) -> Self {
-        let (width, height) = Self::_get_dimensions(texture, 1);
-        Self {
-            texture,
-            width,
-            height,
-        }
-    }
-
+    /// Set wrap mode for texture.
     pub fn set_wrap(&mut self, s: GLenum, t: GLenum) {
         unsafe {
             gl::BindTexture(gl::TEXTURE_2D, self.texture);
@@ -337,6 +356,7 @@ impl Texture {
         }
     }
 
+    /// Set filter mode for texture.
     pub fn set_filter(&mut self, min: GLenum, mag: GLenum) {
         unsafe {
             gl::BindTexture(gl::TEXTURE_2D, self.texture);
@@ -346,6 +366,7 @@ impl Texture {
         }
     }
 
+    /// Set border color for texture.
     pub fn set_border_color(&mut self, r: GLfloat, g: GLfloat, b: GLfloat, a: GLfloat) {
         unsafe {
             let tmp = [r, g, b, a];
@@ -367,20 +388,27 @@ impl Texture {
         }
     }
 
-    pub fn get_dimensions(&self, level: GLint) -> (GLint, GLint) {
-        Self::_get_dimensions(self.texture, level)
-    }
-
-    pub fn gl(&self) -> GLuint {
-        self.texture
-    }
-
     pub fn width(&self) -> GLint {
         self.width
     }
 
     pub fn height(&self) -> GLint {
         self.height
+    }
+
+    pub fn gl(&self) -> GLuint {
+        self.texture
+    }
+}
+
+impl From<GLuint> for Texture {
+    fn from(texture: GLuint) -> Self {
+        let (width, height) = Self::_get_dimensions(texture, 1);
+        Self {
+            texture,
+            width,
+            height,
+        }
     }
 }
 
@@ -394,6 +422,7 @@ impl Drop for Texture {
 
 //
 
+/// Simple wrapper around an OpenGL buffer.
 pub struct Buffer<T> {
     buffer: GLuint,
     usage_type: GLenum,
@@ -401,6 +430,8 @@ pub struct Buffer<T> {
 }
 
 impl<T> Buffer<T> {
+    /// Create a new buffer, will be uninitialized.
+    /// Prefer using `Buffer::empty()` or `Buffer::from_slice()`.
     unsafe fn new(usage_type: GLenum) -> Self {
         let mut buffer = 0;
         // TODO why isnt this unsafe
@@ -415,6 +446,7 @@ impl<T> Buffer<T> {
         }
     }
 
+    /// Creates a new buffer of size `len`.
     pub fn empty(len: usize, usage_type: GLenum) -> Self {
         let mut ret = unsafe {
             Self::new(usage_type)
@@ -423,6 +455,7 @@ impl<T> Buffer<T> {
         ret
     }
 
+    /// Creates a new buffer from a slice.
     pub fn from_slice(slice: &[T], usage_type: GLenum) -> Self {
         let mut ret = unsafe {
             Self::new(usage_type)
@@ -431,6 +464,7 @@ impl<T> Buffer<T> {
         ret
     }
 
+    /// Reinitializes buffer to size `len`.
     pub fn buffer_null(&mut self, len: usize) {
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
@@ -442,6 +476,7 @@ impl<T> Buffer<T> {
         }
     }
 
+    /// Reinitializes buffer from a slice.
     pub fn buffer_data(&mut self, data: &[T]) {
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
@@ -453,6 +488,7 @@ impl<T> Buffer<T> {
         }
     }
 
+    /// Subs data into buffer from a slice.
     pub fn buffer_sub_data(&self, offset: usize, data: &[T]) {
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
@@ -495,6 +531,7 @@ impl<T> Drop for Buffer<T> {
 
 //
 
+/// OpenGL Vertex Attribute type.
 #[derive(Copy, Clone)]
 pub struct VertexAttribute {
     pub size: GLint,
@@ -505,11 +542,13 @@ pub struct VertexAttribute {
     pub divisor: GLuint,
 }
 
+/// Simple wrapper around an OpenGL vertex array.
 pub struct VertexArray {
     vao: GLuint,
 }
 
 impl VertexArray {
+    /// Creates a new vertex array.
     pub fn new() -> Self {
         let mut vao = 0;
         unsafe {
@@ -520,18 +559,7 @@ impl VertexArray {
         }
     }
 
-    pub fn bind(&self) {
-        unsafe {
-            gl::BindVertexArray(self.vao);
-        }
-    }
-
-    pub fn unbind(&self) {
-        unsafe {
-            gl::BindVertexArray(0);
-        }
-    }
-
+    /// Adds and enables a vertex attribute by number.
     pub fn enable_attribute(&mut self, num: GLuint, attrib: VertexAttribute) {
         unsafe {
             // note: redundant
@@ -548,11 +576,24 @@ impl VertexArray {
         }
     }
 
-    pub fn disble_attribute(&mut self, num: GLuint) {
+    /// Disables a vertex attribute by number.
+    pub fn disable_attribute(&mut self, num: GLuint) {
         unsafe {
             // note: redundant
             gl::BindVertexArray(self.vao);
             gl::DisableVertexAttribArray(num);
+        }
+    }
+
+    pub fn bind(&self) {
+        unsafe {
+            gl::BindVertexArray(self.vao);
+        }
+    }
+
+    pub fn unbind(&self) {
+        unsafe {
+            gl::BindVertexArray(0);
         }
     }
 
@@ -571,6 +612,7 @@ impl Drop for VertexArray {
 
 //
 
+/// Useful for instancing and batching.
 pub struct InstanceBuffer<T> {
     ibo: Buffer<T>,
     buffer: Vec<T>,
