@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-use std::default::Default;
-
 use cgmath::{
     prelude::*,
     Vector2,
@@ -9,8 +7,10 @@ use cgmath::{
     Ortho,
     Matrix4,
 };
-use gl;
-use gl::types::*;
+use gl::{
+    self,
+    types::*,
+};
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -136,16 +136,16 @@ pub mod ext {
     use super::*;
 
     pub trait OrthoExt<S> {
-        fn screen(width: S, height: S) -> Ortho<S>;
+        fn screen(width: u32, height: u32) -> Ortho<S>;
     }
 
     impl OrthoExt<GLfloat> for Ortho<GLfloat> {
-        fn screen(width: GLfloat, height: GLfloat) -> Self {
+        fn screen(width: u32, height: u32) -> Self {
             Self {
                 left:   0.,
-                right:  width,
+                right:  width as GLfloat,
                 top:    0.,
-                bottom: height,
+                bottom: height as GLfloat,
                 near:   -1.,
                 far:    1.,
             }

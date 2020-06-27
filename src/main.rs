@@ -47,6 +47,7 @@ fn main() {
         gl::Enable(gl::BLEND);
         gl::BlendEquation(gl::FUNC_ADD);
         gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+        gl::ClearColor(0., 0., 0., 0.);
     }
 
     let prog = Program::new_default(None,
@@ -58,10 +59,6 @@ fn main() {
                     return c * texture2D(_tx_diffuse, _uv_coord);
                 }")).unwrap();
 
-    println!("{:?}", prog);
-
-    println!("{:?}", env::current_dir());
-    println!("{:?}", env!("CARGO_MANIFEST_DIR"));
     let img = image::load_from_memory(content::image::MAHOU).unwrap().to_rgba();
     let tex = Texture::new(&img);
 
@@ -71,7 +68,7 @@ fn main() {
 
     let locs = DefaultLocations::new(&prog);
 
-    let m4_proj = Matrix4::from(Ortho::screen(600., 400.));
+    let m4_proj = Matrix4::from(Ortho::screen(600, 400));
 
     let m4_view = Matrix4::identity();
 
@@ -100,16 +97,14 @@ fn main() {
     let sb_prog = Program::new_default_spritebatch().unwrap();
     let sb_locs = DefaultLocations::new(&sb_prog);
 
-    let fn_img = image::load_from_memory(content::image::SMALL_FONT).unwrap().to_rgba();
-    let font = BitmapFont::new(&fn_img,
-        " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890[](){}=+-/^$@#*~%_<>\"'?!|\\&`.,:;");
+    let font = BitmapFont::new_default();
     let fn_tex = font.texture();
     let fn_tex_uni = TextureData::diffuse(fn_tex);
 
     while !window.should_close() {
         glfw.poll_events();
         for (_, event) in glfw::flush_messages(&events) {
-            println!("{:?}", event);
+            // println!("{:?}", event);
             match event {
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
                     window.set_should_close(true)
@@ -122,7 +117,6 @@ fn main() {
         f_time += 0.1;
 
         unsafe {
-            gl::ClearColor(0., 0., 0., 0.);
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 

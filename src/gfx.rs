@@ -2,7 +2,6 @@
 //!
 //! graphics module
 
-
 #![allow(dead_code)]
 
 use std::{
@@ -13,14 +12,17 @@ use std::{
 };
 
 use cgmath::{
+    prelude::*,
     Vector2,
     Vector4,
     Matrix4,
 };
-use gl;
-use gl::types::*;
-use image;
+use gl::{
+    self,
+    types::*,
+};
 use image::{
+    self,
     RgbaImage,
     Rgba
 };
@@ -42,13 +44,30 @@ use crate::math::{
 //     only thing you really need to check errors on is shader compile and program link
 //     other stuff is mostly data errors, out of bounds errors, etc
 //       dont bother? makes for dirty api
-//  where mutability
-//    bind and unbind dont need to be mutable?
-//    anything that does change gl properties of an object yes
 
 // some type of GL trait?
 //   unsafe from GLuint
 //   to GLuint
+
+// do fns that dont modify rust data but modify GLdata have to be &mut self?
+//   seems like they should be
+//     links idea of rust objects to gl objects
+//   open gl isnt clear abt what will mutate data
+// prev:
+//    bind and unbind dont need to be mutable?
+//    anything that does change gl properties of an object yes
+
+// maru premade 2dcontext
+//   dont build it over and over for each game?
+//   namespace it into default2d or something
+// all defaults can be moved into here ?
+//   not very good for the api
+//   also the idea isnt to have reuasable open gl utils
+//     just so that you can kindof bend the library to use the utils on thier own
+//     but the main idea is a higher level library
+//       pretty thin wrapper around openGl,
+
+// prelude with reexports
 
 //
 
@@ -232,6 +251,7 @@ impl Program {
     }
 
     // TODO dont allow return errors ?
+    //     just panic
     /// Creates a default maru program, with optionial vert and frag effects.
     pub fn new_default(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Self, GfxError> {
         use crate::content;
@@ -434,7 +454,6 @@ impl<T> Buffer<T> {
     /// Prefer using `Buffer::empty()` or `Buffer::from_slice()`.
     unsafe fn new(usage_type: GLenum) -> Self {
         let mut buffer = 0;
-        // TODO why isnt this unsafe
         #[allow(unused_unsafe)]
         unsafe {
             gl::GenBuffers(1, &mut buffer);
@@ -477,6 +496,8 @@ impl<T> Buffer<T> {
     }
 
     /// Reinitializes buffer from a slice.
+    // TODO have this be mut?
+    //      buffer sub data isnt mut
     pub fn buffer_data(&mut self, data: &[T]) {
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
@@ -489,6 +510,7 @@ impl<T> Buffer<T> {
     }
 
     /// Subs data into buffer from a slice.
+    // TODO check buffer size before doing this
     pub fn buffer_sub_data(&self, offset: usize, data: &[T]) {
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
@@ -689,11 +711,7 @@ pub struct Canvas {
 
 impl Canvas {
     pub fn new(width: u32, height: u32) -> Self {
-        let mut img = RgbaImage::new(width, height);
-        for p in img.pixels_mut() {
-            p[3] = 255;
-        }
-
+        let img = RgbaImage::from_pixel(width, height, Rgba::from([0, 0, 0, 255]));
         let texture = Texture::new(&img);
 
         unsafe {
@@ -812,36 +830,59 @@ impl Mesh {
     }
 
     pub fn draw(&self) {
-        unsafe {
-            let i_ct = self.vertices.indices.len();
+        let i_ct = self.vertices.indices.len();
 
-            self.vao.bind();
-            if i_ct == 0 {
-                gl::DrawArrays(self.draw_type, 0, self.vertices.vertices.len() as GLint);
-            } else {
-                gl::DrawElements(self.draw_type, i_ct as GLint, gl::UNSIGNED_INT, ptr::null());
+        self.vao.bind();
+        if i_ct == 0 {
+            unsafe {
+                gl::DrawArrays(self.draw_type,
+                    0,
+                    self.vertices.vertices.len() as GLint);
             }
-            self.vao.unbind();
+        } else {
+            unsafe {
+                gl::DrawElements(self.draw_type,
+                    i_ct as GLint,
+                    gl::UNSIGNED_INT,
+                    ptr::null());
+            }
         }
+        self.vao.unbind();
     }
 
     pub fn draw_instanced(&self, n: usize) {
-        unsafe {
-            let i_ct = self.vertices.indices.len();
+        let i_ct = self.vertices.indices.len();
 
-            self.vao.bind();
-            if i_ct == 0 {
-                gl::DrawArraysInstanced(self.draw_type, 0, self.vertices.vertices.len() as GLint, n as GLint);
-            } else {
-                gl::DrawElementsInstanced(self.draw_type, i_ct as GLint, gl::UNSIGNED_INT, ptr::null(), n as GLint);
+        self.vao.bind();
+        if i_ct == 0 {
+            unsafe {
+                gl::DrawArraysInstanced(self.draw_type,
+                    0,
+                    self.vertices.vertices.len() as GLint,
+                    n as GLint);
             }
-            self.vao.unbind();
+        } else {
+            unsafe {
+                gl::DrawElementsInstanced(self.draw_type,
+                    i_ct as GLint,
+                    gl::UNSIGNED_INT,
+                    ptr::null(),
+                    n as GLint);
+            }
         }
+        self.vao.unbind();
     }
 
-    // TODO buffer data
+    pub fn buffer_data(&mut self) {
+        self.vbo.buffer_data(&self.vertices.vertices);
+        self.ebo.buffer_data(&self.vertices.indices);
+    }
 
-    pub(in crate::gfx) unsafe fn vao_mut(&mut self) -> &mut VertexArray {
+    pub fn vertices_mut(&mut self) -> &mut Vertices {
+        &mut self.vertices
+    }
+
+    fn vao_mut(&mut self) -> &mut VertexArray {
         &mut self.vao
     }
 }
@@ -990,8 +1031,6 @@ impl DefaultLocations {
         }
     }
 
-    // TODO return ref?
-    //   yea? because Uniform::uniform takes ref
     pub fn projection(&self) -> Location {
         self.projection
     }
@@ -1006,6 +1045,10 @@ impl DefaultLocations {
 
     pub fn time(&self) -> Location {
         self.time
+    }
+
+    pub fn flip_uvs(&self) -> Location {
+        self.flip_uvs
     }
 
     pub fn base_color(&self) -> Location {
@@ -1080,6 +1123,14 @@ impl Default for TextureRegion {
 //   but the lookup table would have to be different
 //   idk
 //     some type of convert string to vec<&textureRegion>
+// TODO
+//   inlucde medium sized font and large fon
+//     new_default_small
+//     new_default_medium
+//     new_default_large
+//     just take dont size as an enum
+//       new_default(FontSize::Small) etc
+//   make font with default alphabet
 pub struct BitmapFont {
     texture: Texture,
     regions: Vec<TextureRegion>,
@@ -1129,6 +1180,16 @@ impl BitmapFont {
         }
     }
 
+    pub fn new_default() -> Self {
+        use crate::content;
+
+        let fn_img = image::load_from_memory(content::image::SMALL_FONT).unwrap().to_rgba();
+        Self::new(&fn_img,
+        " ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+          abcdefghijklmnopqrstuvwxyz\
+          1234567890[](){}=+-/^$@#*~%_<>\"'?!|\\&`.,:;")
+    }
+
     pub fn texture(&self) -> &Texture {
         &self.texture
     }
@@ -1162,6 +1223,7 @@ impl Default for SbSprite {
     }
 }
 
+// use centered quad, for particles
 pub struct Spritebatch {
     buffer: InstanceBuffer<SbSprite>,
     mesh_quad: Mesh,
@@ -1180,9 +1242,7 @@ impl Spritebatch {
         let buffer = InstanceBuffer::new(size);
         let ibo = buffer.ibo();
 
-        let vao = unsafe {
-            mesh_quad.vao_mut()
-        };
+        let vao = mesh_quad.vao_mut();
 
         let base = VertexAttribute {
             size: 4,
@@ -1193,7 +1253,7 @@ impl Spritebatch {
             divisor: 1,
         };
 
-        // TODO use enum for all these
+        // TODO use enum for all the attrib locs
         vao.bind();
         ibo.bind_to(gl::ARRAY_BUFFER);
         vao.enable_attribute(3, VertexAttribute {
@@ -1285,22 +1345,37 @@ impl Spritebatch {
 
 //
 
+// TODO where to put something like a coordinate system
+//      put it in the default shader?
+//        use view matrix
+//      2d coordinate system
+//        last after projection
+//      put it in drawer?
+//        wont work for anything else
+
 // this is just a bunch of functions that generate uniforms on the fly
 //   and applies them to current program
 // also has meshes and textures
 
-// poly
+// polygon
 // line
+// triangle
+
+// lined rect
 
 pub struct Drawer {
+    line_thickness: GLfloat,
+
     mesh_quad: Mesh,
     mesh_circle: Mesh,
     tex_white: Texture,
+    tex_blue: Texture,
 }
 
 impl Drawer {
     pub fn new(circle_resolution: usize) -> Self {
-        let img = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
+        let white = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
+        let blue = RgbaImage::from_pixel(1, 1, Rgba::from([0, 0, 255, 0]));
         Self {
             mesh_quad: Mesh::new(Vertices::quad(false),
                                  gl::STATIC_DRAW,
@@ -1308,16 +1383,36 @@ impl Drawer {
             mesh_circle: Mesh::new(Vertices::circle(circle_resolution),
                                    gl::STATIC_DRAW,
                                    gl::TRIANGLE_FAN),
-            tex_white: Texture::new(&img),
+            tex_white: Texture::new(&white),
+            tex_blue: Texture::new(&blue),
+            line_thickness: 2.0,
         }
     }
 
+    pub fn line_thickness(&mut self) -> &mut GLfloat {
+        &mut self.line_thickness
+    }
+
+    pub fn reset_uniforms(&self, locations: &DefaultLocations) {
+        let m4_iden = Matrix4::identity();
+        m4_iden.uniform(locations.projection());
+        m4_iden.uniform(locations.view());
+        m4_iden.uniform(locations.model());
+        Vector4::from([1., 1., 1., 1.]).uniform(locations.base_color());
+        false.uniform(locations.flip_uvs());
+        (0. as GLfloat).uniform(locations.time());
+        TextureData::diffuse(&self.tex_white).uniform(locations.diffuse());
+        TextureData::normal(&self.tex_blue).uniform(locations.normal());
+    }
+
+    /// Sets locations.diffuse() and locations.model()
     pub fn sprite_px(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
         TextureData::diffuse(texture).uniform(locations.diffuse());
         Matrix4::from_transform2d(transform).uniform(locations.model());
         self.mesh_quad.draw();
     }
 
+    /// Sets locations.diffuse() and locations.model()
     pub fn sprite(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
         let temp = Transform2d {
             scale: Vector2::new(transform.scale.x * texture.width() as GLfloat,
@@ -1327,6 +1422,8 @@ impl Drawer {
         self.sprite_px(locations, texture, &temp);
     }
 
+    /// Sets locations.diffuse() and locations.model()
+    ///   `rect` should be in the form: [x1, y1, x2, y2]
     pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: Vector4<GLfloat>) {
         let temp = Transform2d {
             position: Vector2::new(rect.x, rect.y),
@@ -1335,5 +1432,42 @@ impl Drawer {
             rotation: 0.,
         };
         self.sprite_px(locations, &self.tex_white, &temp);
+    }
+
+    /// Sets locations.diffuse() and locations.model()
+    pub fn circle(&self, locations: &DefaultLocations, x: GLfloat, y: GLfloat, r: GLfloat) {
+        let transform = Transform2d {
+            position: Vector2::new(x, y),
+            scale:    Vector2::new(r, r),
+            rotation: 0.,
+        };
+        TextureData::diffuse(&self.tex_white).uniform(locations.diffuse());
+        Matrix4::from_transform2d(&transform).uniform(locations.model());
+        self.mesh_circle.draw();
+    }
+
+    /// Sets locations.diffuse() and locations.model()
+    pub fn horizontal_line(&self, locations: &DefaultLocations, y: GLfloat, x1: GLfloat, x2: GLfloat) {
+        let y1 = y - self.line_thickness / 2.;
+        let y2 = y + self.line_thickness / 2.;
+        self.filled_rectangle(locations, Vector4::new(x1, y1, x2, y2));
+    }
+
+    /// Sets locations.diffuse() and locations.model()
+    pub fn vertical_line(&self, locations: &DefaultLocations, x: GLfloat, y1: GLfloat, y2: GLfloat) {
+        let x1 = x - self.line_thickness / 2.;
+        let x2 = x + self.line_thickness / 2.;
+        self.filled_rectangle(locations, Vector4::new(x1, y1, x2, y2));
+    }
+
+    /// Sets locations.diffuse() and locations.model()
+    pub fn line(&self, locations: &DefaultLocations, x1: GLfloat, y1: GLfloat, x2: GLfloat, y2: GLfloat) {
+        if x1 == x2 {
+            self.vertical_line(locations, x1, y1, y2);
+        } else if y1 == y2 {
+            self.horizontal_line(locations, y1, x1, x2);
+        } else {
+            // TODO
+        }
     }
 }
