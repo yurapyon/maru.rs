@@ -35,6 +35,8 @@ use crate::math::{
     Transform2d,
     Vertex,
     Vertices,
+    Color,
+    AABB,
 };
 
 //
@@ -387,6 +389,7 @@ impl Texture {
     }
 
     /// Set border color for texture.
+    // TODO take maru::Color?
     pub fn set_border_color(&mut self, r: GLfloat, g: GLfloat, b: GLfloat, a: GLfloat) {
         unsafe {
             let tmp = [r, g, b, a];
@@ -882,7 +885,8 @@ impl Mesh {
         &mut self.vertices
     }
 
-    fn vao_mut(&mut self) -> &mut VertexArray {
+    /// Just be careful
+    pub fn vao_mut(&mut self) -> &mut VertexArray {
         &mut self.vao
     }
 }
@@ -953,6 +957,15 @@ impl Uniform for GLuint {
 }
 
 impl Uniform for Vector4<GLfloat> {
+    fn uniform(&self, loc: Location) {
+        unsafe {
+            let buf: &[GLfloat; 4] = self.as_ref();
+            gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
+        }
+    }
+}
+
+impl Uniform for Color {
     fn uniform(&self, loc: Location) {
         unsafe {
             let buf: &[GLfloat; 4] = self.as_ref();
@@ -1066,57 +1079,8 @@ impl DefaultLocations {
 
 //
 
-#[derive(Copy, Clone, Debug)]
-#[repr(C)]
-pub struct TextureRegion {
-    // note: uses u32 because image crate uses u32
-    pub x1: u32,
-    pub y1: u32,
-    pub x2: u32,
-    pub y2: u32,
-}
-
-impl TextureRegion {
-    pub fn new(x1: u32, y1: u32, x2: u32, y2: u32) -> Self {
-        Self {
-            x1,
-            y1,
-            x2,
-            y2,
-        }
-    }
-
-    pub fn normalized(&self, tex: &Texture) -> Vector4<GLfloat> {
-        let fl_w = tex.width() as GLfloat;
-        let fl_h = tex.height() as GLfloat;
-        Vector4::new(
-            self.x1 as GLfloat / fl_w,
-            self.y1 as GLfloat / fl_h,
-            self.x2 as GLfloat / fl_w,
-            self.y2 as GLfloat / fl_h,
-        )
-    }
-
-    pub fn width(&self) -> u32 {
-        self.x2 - self.x1
-    }
-
-    pub fn height(&self) -> u32 {
-        self.y2 - self.y1
-    }
-}
-
-impl Default for TextureRegion {
-    fn default() -> Self {
-        Self::new(0, 0, 0, 0)
-    }
-}
-
-// TODO
-// type UVRect
-// type Color
-//   etc
-//    = Vector4<GLfloat>
+type TextureRegion = AABB<u32>;
+type UvRegion = AABB<GLfloat>;
 
 // just use ascii for now
 // maybe in the future use utf8
@@ -1134,7 +1098,7 @@ impl Default for TextureRegion {
 pub struct BitmapFont {
     texture: Texture,
     regions: Vec<TextureRegion>,
-    uv_regions: Vec<Vector4<GLfloat>>,
+    uv_regions: Vec<UvRegion>,
 }
 
 impl BitmapFont {
@@ -1198,7 +1162,7 @@ impl BitmapFont {
         self.regions[ch as usize]
     }
 
-    pub fn uv_region(&self, ch: char) -> Vector4<GLfloat> {
+    pub fn uv_region(&self, ch: char) -> UvRegion {
         self.uv_regions[ch as usize]
     }
 }
@@ -1208,17 +1172,17 @@ impl BitmapFont {
 #[derive(Debug)]
 #[repr(C)]
 pub struct SbSprite {
-    pub uv: Vector4<GLfloat>,
+    pub uv: UvRegion,
     pub transform: Transform2d,
-    pub color: Vector4<GLfloat>,
+    pub color: Color,
 }
 
 impl Default for SbSprite {
     fn default() -> Self {
         Self {
-            uv: Vector4::new(0., 0., 1., 1.),
+            uv: UvRegion::new(0., 0., 1., 1.),
             transform: Default::default(),
-            color: Vector4::new(1., 1., 1., 1.),
+            color: Color::new_rgba(1., 1., 1., 1.),
         }
     }
 }
@@ -1398,7 +1362,7 @@ impl Drawer {
         m4_iden.uniform(locations.projection());
         m4_iden.uniform(locations.view());
         m4_iden.uniform(locations.model());
-        Vector4::from([1., 1., 1., 1.]).uniform(locations.base_color());
+        Color::white().uniform(locations.base_color());
         false.uniform(locations.flip_uvs());
         (0. as GLfloat).uniform(locations.time());
         TextureData::diffuse(&self.tex_white).uniform(locations.diffuse());

@@ -1,16 +1,173 @@
 #![allow(dead_code)]
 
+use std::{
+    mem,
+    ops::Add
+};
+
 use cgmath::{
     prelude::*,
     Vector2,
     Vector3,
     Ortho,
     Matrix4,
+
+    BaseNum,
+};
+use image::{
+    self,
 };
 use gl::{
     self,
     types::*,
 };
+use num::{
+    traits::AsPrimitive
+};
+
+//
+
+use crate::gfx::{
+    Texture,
+};
+
+//
+
+// TODO where to use GLfloat or just use a rust float
+//   could just put some compiler error is GLfloat != f32
+
+//
+
+/// Just a color.
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct Color {
+    pub r: GLfloat,
+    pub g: GLfloat,
+    pub b: GLfloat,
+    pub a: GLfloat,
+}
+
+impl Color {
+    pub fn new_rgba(r: GLfloat, g: GLfloat, b: GLfloat, a:GLfloat) -> Self {
+        Self {
+            r,
+            g,
+            b,
+            a,
+        }
+    }
+
+    // TODO new_hsv
+
+    pub fn white() -> Self {
+        Self::new_rgba(1.0, 1.0, 1.0, 1.0)
+    }
+
+    pub fn black() -> Self {
+        Self::new_rgba(0.0, 0.0, 0.0, 1.0)
+    }
+}
+
+impl From<Color> for [u8; 4] {
+    fn from(color: Color) -> Self {
+        let r = (color.r * 255.).floor() as u8;
+        let g = (color.g * 255.).floor() as u8;
+        let b = (color.b * 255.).floor() as u8;
+        let a = (color.a * 255.).floor() as u8;
+        [r, g, b, a]
+    }
+}
+
+impl From<Color> for image::Rgba<u8> {
+    fn from(color: Color) -> Self {
+        Self::from(<[u8; 4]>::from(color))
+    }
+}
+
+impl AsRef<[GLfloat; 4]> for Color {
+    fn as_ref(&self) -> &[GLfloat; 4] {
+        unsafe {
+            mem::transmute(self)
+        }
+    }
+}
+
+//
+
+/// An AABB rectangle.
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct AABB<T> {
+    pub x1: T,
+    pub y1: T,
+    pub x2: T,
+    pub y2: T,
+}
+
+impl<T> AABB<T> {
+    pub fn new(x1: T, y1: T, x2: T, y2: T) -> Self {
+        Self {
+            x1,
+            y1,
+            x2,
+            y2,
+        }
+    }
+}
+
+impl<T: BaseNum> AABB<T> {
+    pub fn width(&self) -> T {
+        self.x2 - self.x1
+    }
+
+    pub fn height(&self) -> T {
+        self.y2 - self.y1
+    }
+}
+
+impl<T: BaseNum + AsPrimitive<GLfloat>> AABB<T> {
+    /// Return an `AABB<GLfloat>` normalized to the texture width and height.
+    pub fn normalized(&self, tex: &Texture) -> AABB<GLfloat> {
+        let fl_w = tex.width() as GLfloat;
+        let fl_h = tex.height() as GLfloat;
+        AABB::new(
+            self.x1.as_() / fl_w,
+            self.y1.as_() / fl_h,
+            self.x2.as_() / fl_w,
+            self.y2.as_() / fl_h,
+        )
+    }
+}
+
+impl<T: BaseNum> Add for AABB<T> {
+    type Output = Self;
+
+    fn add(self, other: Self::Output) -> Self {
+        Self::new(self.x1 + other.x1,
+                  self.y1 + other.y1,
+                  self.x2 + other.x2,
+                  self.y2 + other.y2,)
+    }
+}
+
+impl<T: BaseNum + Zero> Zero for AABB<T> {
+    fn zero() -> Self {
+        Self::new(Zero::zero(),
+                  Zero::zero(),
+                  Zero::zero(),
+                  Zero::zero(),)
+    }
+
+    fn is_zero(&self) -> bool {
+        self.x1 == Zero::zero() &&
+        self.y1 == Zero::zero() &&
+        self.x2 == Zero::zero() &&
+        self.y2 == Zero::zero()
+    }
+}
+
+//
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]

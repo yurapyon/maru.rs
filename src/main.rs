@@ -160,21 +160,21 @@ fn main() {
         sb.begin();
 
         let tmp = sb.pull();
-        tmp.color.x = 0.33;
+        tmp.color.r = 0.33;
         tmp.transform.position.x = 0.;
         tmp.transform.scale.x = 150.;
         tmp.transform.scale.y = 150.;
         let tmp = sb.pull();
-        tmp.color.x = 0.66;
+        tmp.color.r = 0.66;
         tmp.transform.position.x = 50.;
         tmp.transform.scale.x = 150.;
         tmp.transform.scale.y = 150.;
         let tmp = sb.pull();
-        tmp.color.x = 0.99;
+        tmp.color.r = 0.99;
         tmp.transform.position.x = 100.;
         tmp.transform.scale.x = 150.;
         tmp.transform.scale.y = 150.;
-        tmp.uv.z = 0.5;
+        tmp.uv.x2 = 0.5;
 
         sb.end();
 
