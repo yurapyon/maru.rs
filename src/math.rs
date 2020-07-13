@@ -311,6 +311,7 @@ pub mod ext {
 
     //
 
+    // TODO use From<> trait
     pub trait Matrix4Ext<S> {
         fn from_transform2d(t2d: &Transform2d) -> Matrix4<S>;
     }

@@ -31,12 +31,12 @@ use memoffset::offset_of;
 //
 
 use crate::math::{
+    AABB,
+    Color,
     ext::*,
     Transform2d,
     Vertex,
     Vertices,
-    Color,
-    AABB,
 };
 
 //
@@ -52,12 +52,9 @@ use crate::math::{
 //   to GLuint
 
 // do fns that dont modify rust data but modify GLdata have to be &mut self?
-//   seems like they should be
-//     links idea of rust objects to gl objects
-//   open gl isnt clear abt what will mutate data
-// prev:
-//    bind and unbind dont need to be mutable?
+//    bind and unbind dont need to be mutable
 //    anything that does change gl properties of an object yes
+//      anything that changes data
 
 // maru premade 2dcontext
 //   dont build it over and over for each game?
@@ -70,6 +67,12 @@ use crate::math::{
 //       pretty thin wrapper around openGl,
 
 // prelude with reexports
+
+// clone glfw context into every gl item,
+//   dont have the problem with needing to put things in a certain order in structs
+//   incerements glfw ref count
+//   might not be guaranteed behavior by glfw lib,
+//   but i could still do it on my own w/ an Rc<>
 
 //
 
@@ -252,8 +255,6 @@ impl Program {
         }
     }
 
-    // TODO dont allow return errors ?
-    //     just panic
     /// Creates a default maru program, with optionial vert and frag effects.
     pub fn new_default(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Self, GfxError> {
         use crate::content;
@@ -295,7 +296,7 @@ impl Program {
     }
 
     /// `gl::UseProgram();`
-    pub fn gl_use(&self) {
+    pub fn bind(&self) {
         unsafe {
             gl::UseProgram(self.program);
         }
@@ -318,7 +319,7 @@ impl Drop for Program {
 
 // TODO
 //   buffer data
-//   switch width and height to usizes?
+//   switch width and height to usizes? or u32?
 /// Simple wrapper around an OpenGL texture.
 pub struct Texture {
     texture: GLuint,
@@ -335,7 +336,7 @@ impl Texture {
             gl::BindTexture(gl::TEXTURE_2D, texture);
 
             // TODO
-            //   endianness not neccessary cuz Rgba<u8> is fixed order
+            //   endianness not neccessary cuz Rgba<u8> is [u8; 4]
             //   why do i have to do reverse though?
             /*
             let ty = if cfg!(target_endian = "little") {
@@ -699,7 +700,7 @@ impl<T> InstanceBuffer<T> {
         self.buffer.len() - self.index
     }
 
-    pub(in crate::gfx) fn ibo(&self) -> &Buffer<T> {
+    fn ibo(&self) -> &Buffer<T> {
         &self.ibo
     }
 }
@@ -892,6 +893,9 @@ impl Mesh {
 }
 
 //
+
+// TODO find some way to have location.set(val) ??
+//        rather than val.uniform(location)
 
 // note: sometimes location will be -1
 //       if location can not be found
@@ -1353,7 +1357,7 @@ impl Drawer {
         }
     }
 
-    pub fn line_thickness(&mut self) -> &mut GLfloat {
+    pub fn line_thickness_mut(&mut self) -> &mut GLfloat {
         &mut self.line_thickness
     }
 
@@ -1388,11 +1392,11 @@ impl Drawer {
 
     /// Sets locations.diffuse() and locations.model()
     ///   `rect` should be in the form: [x1, y1, x2, y2]
-    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: Vector4<GLfloat>) {
+    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<GLfloat>) {
         let temp = Transform2d {
-            position: Vector2::new(rect.x, rect.y),
-            scale:    Vector2::new(rect.z - rect.x,
-                                   rect.w - rect.y),
+            position: Vector2::new(rect.x1, rect.y1),
+            scale:    Vector2::new(rect.width(),
+                                   rect.height()),
             rotation: 0.,
         };
         self.sprite_px(locations, &self.tex_white, &temp);
@@ -1414,14 +1418,14 @@ impl Drawer {
     pub fn horizontal_line(&self, locations: &DefaultLocations, y: GLfloat, x1: GLfloat, x2: GLfloat) {
         let y1 = y - self.line_thickness / 2.;
         let y2 = y + self.line_thickness / 2.;
-        self.filled_rectangle(locations, Vector4::new(x1, y1, x2, y2));
+        self.filled_rectangle(locations, AABB::new(x1, y1, x2, y2));
     }
 
     /// Sets locations.diffuse() and locations.model()
     pub fn vertical_line(&self, locations: &DefaultLocations, x: GLfloat, y1: GLfloat, y2: GLfloat) {
         let x1 = x - self.line_thickness / 2.;
         let x2 = x + self.line_thickness / 2.;
-        self.filled_rectangle(locations, Vector4::new(x1, y1, x2, y2));
+        self.filled_rectangle(locations, AABB::new(x1, y1, x2, y2));
     }
 
     /// Sets locations.diffuse() and locations.model()

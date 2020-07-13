@@ -72,7 +72,7 @@ fn main() {
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
-        sb_prog.gl_use();
+        sb_prog.bind();
         draw.reset_uniforms(&sb_locs);
         proj.uniform(sb_locs.projection());
         time.uniform(sb_locs.time());

@@ -41,13 +41,18 @@ impl Default for GlfwContextSettings {
     }
 }
 
+//
+
+// TODO resize fn
+
 /// A basic GLFW context
 pub struct GlfwContext {
+    settings: GlfwContextSettings,
+
+    // drop order
     pub events: Receiver<(f64, glfw::WindowEvent)>,
     pub window: glfw::Window,
     pub glfw: glfw::Glfw,
-
-    settings: GlfwContextSettings,
 }
 
 impl GlfwContext {
@@ -72,7 +77,10 @@ impl GlfwContext {
         gl::load_with(| s | window.get_proc_address(s) as *const _);
         glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
 
-        // TODO get framebuffer size and update width and height
+        let mut settings = settings;
+        let (window_w, window_h) = window.get_framebuffer_size();
+        settings.window_width = window_w as u32;
+        settings.window_height = window_h as u32;
 
         unsafe {
             gl::Viewport(0, 0, settings.window_width as GLint, settings.window_height as GLint);
@@ -83,11 +91,11 @@ impl GlfwContext {
         }
 
         Self {
+            settings,
+
             events,
             window,
             glfw,
-
-            settings,
         }
     }
 
