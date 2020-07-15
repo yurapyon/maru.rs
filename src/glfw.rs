@@ -12,12 +12,6 @@ use glfw::{
 
 //
 
-// TODO rename?
-//       just Context
-//          kinda confusing w glfw::Context vs maru::glfw::Context
-//       MaruContext?
-//       GfxContext?
-
 // TODO resize fn
 //      start fullscreen or not
 pub struct GlfwContextSettings {

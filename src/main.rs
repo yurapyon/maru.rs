@@ -42,7 +42,7 @@ fn main() {
     let proj = Matrix4::from(Ortho::screen(600, 400));
     let mut time: GLfloat = 0.;
 
-    let draw = Drawer::new(50);
+    let draw = ShapeDrawer::new(50);
 
     let mut sb = Spritebatch::new(50);
     let sb_prog = Program::new_default_spritebatch().unwrap();
@@ -73,7 +73,7 @@ fn main() {
         }
 
         sb_prog.bind();
-        draw.reset_uniforms(&sb_locs);
+        sb_locs.reset();
         proj.uniform(sb_locs.projection());
         time.uniform(sb_locs.time());
 
@@ -82,26 +82,29 @@ fn main() {
         sb.begin();
 
         let tmp = sb.pull();
+        *tmp = Default::default();
         tmp.color.r = 0.33;
         tmp.transform.position.x = 0.;
         tmp.transform.scale.x = 150.;
         tmp.transform.scale.y = 150.;
         let tmp = sb.pull();
+        *tmp = Default::default();
         tmp.color.r = 0.66;
         tmp.transform.position.x = 50.;
         tmp.transform.scale.x = 150.;
         tmp.transform.scale.y = 150.;
         let tmp = sb.pull();
+        *tmp = Default::default();
         tmp.color.r = 0.99;
         tmp.transform.position.x = 100.;
         tmp.transform.scale.x = 150.;
         tmp.transform.scale.y = 150.;
-        tmp.uv.x2 = 0.5;
+        tmp.uv.corner2.x = 0.5;
 
         sb.end();
 
         font_td.uniform(sb_locs.diffuse());
-        sb.print(&font, "hello");
+        sb.print(&font, "hello world scl by 2");
 
         ctx.window.swap_buffers();
         thread::sleep(s_tm);

@@ -7,6 +7,7 @@ use std::{
 use cgmath::{
     prelude::*,
     Point2,
+    Point3,
     Vector2,
     Vector3,
     Ortho,
@@ -31,6 +32,8 @@ use crate::gfx::{
 // https://www.khronos.org/opengl/wiki/OpenGL_Type
 
 // TODO use cgmath the right way
+// for now just use transform2d the way i have it
+// someday try and use matrix3 instead with proper linear algebra stuff?
 
 //
 
@@ -119,10 +122,9 @@ impl<T: BaseNum> AABB<T> {
 
     /// Return an `AABB<f32>` normalized to the texture width and height.
     pub fn normalized(&self, tex: &Texture) -> AABB<f32> {
-        let fl_w = tex.width() as f32;
-        let fl_h = tex.height() as f32;
-        let corner1 = self.corner1.cast().unwrap() / fl_w;
-        let corner2 = self.corner2.cast().unwrap() / fl_h;
+        let tx_point = Point2::new(tex.width() as f32, tex.height() as f32);
+        let corner1 = self.corner1.cast().unwrap().div_element_wise(tx_point);
+        let corner2 = self.corner2.cast().unwrap().div_element_wise(tx_point);
         AABB {
             corner1,
             corner2,
@@ -164,18 +166,17 @@ impl<T: BaseNum + Zero> Zero for AABB<T> {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
-    // TODO point3, vector3, point2
-    pub position: Vector3<f32>,
+    pub position: Point3<f32>,
     pub normal: Vector3<f32>,
-    pub uv: Vector2<f32>,
+    pub uv: Point2<f32>,
 }
 
-impl Default for Vertex {
-    fn default() -> Self {
+impl Vertex {
+    fn zero() -> Self {
         Self {
-            position: Vector3::new(0., 0., 0.),
+            position: Point3::new(0., 0., 0.),
             normal:   Vector3::new(0., 0., 0.),
-            uv:       Vector2::new(0., 0.),
+            uv:       Point2::new(0., 0.),
         }
     }
 }
@@ -190,27 +191,27 @@ impl Vertices {
         let mut vertices = Vec::with_capacity(4);
 
         vertices.push(Vertex {
-            position: Vector3::new(1., 1., 0.),
-            uv:       Vector2::new(1., 1.),
-            .. Default::default()
+            position: Point3::new(1., 1., 0.),
+            uv:       Point2::new(1., 1.),
+            .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: Vector3::new(1., 0., 0.),
-            uv:       Vector2::new(1., 0.),
-            .. Default::default()
+            position: Point3::new(1., 0., 0.),
+            uv:       Point2::new(1., 0.),
+            .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: Vector3::new(0., 1., 0.),
-            uv:       Vector2::new(0., 1.),
-            .. Default::default()
+            position: Point3::new(0., 1., 0.),
+            uv:       Point2::new(0., 1.),
+            .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: Vector3::new(0., 0., 0.),
-            uv:       Vector2::new(0., 0.),
-            .. Default::default()
+            position: Point3::new(0., 0., 0.),
+            uv:       Point2::new(0., 0.),
+            .. Vertex::zero()
         });
 
         if centered {
@@ -238,9 +239,9 @@ impl Vertices {
             let x = at.cos() / 2.;
             let y = at.sin() / 2.;
             vertices.push(Vertex {
-                position: Vector3::new(x, y, 0.),
-                uv:       Vector2::new(x + 0.5, y + 0.5),
-                .. Default::default()
+                position: Point3::new(x, y, 0.),
+                uv:       Point2::new(x + 0.5, y + 0.5),
+                .. Vertex::zero()
             });
         }
 
@@ -279,6 +280,7 @@ impl Transform2d {
         }
     }
 
+    /*
     pub fn translate(&mut self, x: f32, y: f32) {
         self.position.x += x;
         self.position.y += y;
@@ -296,20 +298,8 @@ impl Transform2d {
         // self.position.y += y;
         self.rotation += Rad(r);
     }
-
+    */
 }
-
-/*
-impl Default for Transform2d {
-    fn default() -> Self {
-        Self {
-            position: Vector2::new(0., 0.),
-            scale:    Vector2::new(1., 1.),
-            rotation: 0.,
-        }
-    }
-}
-*/
 
 //
 
@@ -335,7 +325,6 @@ pub mod ext {
 
     //
 
-    /*
     impl From<Transform2d> for Matrix4<f32> {
         fn from(t2d: Transform2d) -> Self {
             let mut ret = Self::identity();
@@ -352,5 +341,4 @@ pub mod ext {
             ret
         }
     }
-    */
 }

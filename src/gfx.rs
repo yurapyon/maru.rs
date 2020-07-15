@@ -34,7 +34,6 @@ use memoffset::offset_of;
 use crate::math::{
     AABB,
     Color,
-    ext::*,
     Transform2d,
     Vertex,
     Vertices,
@@ -56,31 +55,20 @@ use crate::math::{
 //    bind and unbind dont need to be mutable
 //    anything that does change gl properties of an object yes
 //      anything that changes data
+//      bind and unbind allow user to change data of bound obj and should technically be mut
 
-// maru premade 2dcontext
-//   dont build it over and over for each game?
-//   namespace it into default2d or something
-// all defaults can be moved into here ?
-//   not very good for the api
-//   also the idea isnt to have reuasable open gl utils
-//     just so that you can kindof bend the library to use the utils on thier own
-//     but the main idea is a higher level library
-//       pretty thin wrapper around openGl,
-
-// prelude with reexports
+// TODO prelude with reexports
 
 // clone glfw context into every gl item,
 //   dont have the problem with needing to put things in a certain order in structs
 //   incerements glfw ref count
 //   might not be guaranteed behavior by glfw lib,
 //   but i could still do it on my own w/ an Rc<>
+// only creat objects through glfw context to manage lifetimes
 
 //
 
-// TODO use string?
-//      can just use &str maybe
-//        then have to worry abt lifetimes
-// differentiate betw shader and program err?
+// TODO differentiate betw shader and program err?
 #[derive(Debug)]
 pub enum GfxError {
      BadInit(String),
@@ -95,6 +83,7 @@ pub enum GfxError {
 /// TODO: shader template format example
 pub struct ShaderTemplate {
     header: String,
+    // TODO should be an option ?
     extras: String,
     effect: String,
     footer: String,
@@ -131,6 +120,24 @@ impl ShaderTemplate {
             footer,
         })
     }
+
+    /*
+    pub fn as_string(&self, effect: Option<&str>) -> String {
+        let effect = match effect {
+            Some(s) => s,
+            None    => &self.effect,
+        };
+
+        let strs = [
+            &self.header,
+            &self.extras,
+            effect,
+            &self.footer,
+        ];
+
+        strs.concat()
+    }
+    */
 }
 
 //
@@ -148,6 +155,7 @@ pub struct Shader {
 impl Shader {
     // TODO report errors better
     //      also report warnings somehow?
+    // does it really need to take an array of strs?
     /// Creates a new shader from strings.
     pub fn new(ty: GLenum, strings: &[&str]) -> Result<Self, GfxError> {
         let c_strs: Vec<_> = strings.iter()
@@ -895,18 +903,10 @@ impl Mesh {
 
 //
 
-// TODO find some way to have location.set(val) ??
-//        rather than val.uniform(location)
-//  doing it this way wouldnt let you add new uniform types
-//    would have to implement new versions of location.set
-//  Could do set() with something that implements Uniform,
-//   but that kindof defeats the purpose
-
 // note: sometimes location will be -1
 //       if location can not be found
 //       just ignore it gracefully
 //         or have separate 'new' function that reports error
-#[derive(Copy, Clone)]
 pub struct Location {
     location: GLint
 }
@@ -925,17 +925,20 @@ impl Location {
     pub fn location(&self) -> GLint {
         self.location
     }
+
+    pub fn set<T: Uniform>(&self, val: &T) {
+        val.uniform(self);
+    }
 }
 
 //
 
-// TODO taking raw locations feels a litte weird
 pub trait Uniform {
-    fn uniform(&self, loc: Location);
+    fn uniform(&self, loc: &Location);
 }
 
 impl Uniform for GLfloat {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         unsafe {
             gl::Uniform1f(loc.location(), *self);
         }
@@ -943,7 +946,7 @@ impl Uniform for GLfloat {
 }
 
 impl Uniform for bool {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         unsafe {
             gl::Uniform1i(loc.location(), if *self { 1 } else { 0 });
         }
@@ -951,7 +954,7 @@ impl Uniform for bool {
 }
 
 impl Uniform for GLint {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         unsafe {
             gl::Uniform1i(loc.location(), *self);
         }
@@ -959,7 +962,7 @@ impl Uniform for GLint {
 }
 
 impl Uniform for GLuint {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         unsafe {
             gl::Uniform1ui(loc.location(), *self);
         }
@@ -967,7 +970,7 @@ impl Uniform for GLuint {
 }
 
 impl Uniform for Vector4<GLfloat> {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         unsafe {
             let buf: &[GLfloat; 4] = self.as_ref();
             gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
@@ -976,7 +979,7 @@ impl Uniform for Vector4<GLfloat> {
 }
 
 impl Uniform for Color {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         unsafe {
             let buf: &[GLfloat; 4] = self.as_ref();
             gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
@@ -985,7 +988,7 @@ impl Uniform for Color {
 }
 
 impl Uniform for Matrix4<GLfloat> {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         unsafe {
             let buf: &[GLfloat; 16] = self.as_ref();
             gl::UniformMatrix4fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
@@ -1018,7 +1021,7 @@ impl<'a> TextureData<'a> {
 }
 
 impl Uniform for TextureData<'_> {
-    fn uniform(&self, loc: Location) {
+    fn uniform(&self, loc: &Location) {
         (self.select - gl::TEXTURE0).uniform(loc);
         unsafe {
             gl::ActiveTexture(self.select);
@@ -1026,6 +1029,10 @@ impl Uniform for TextureData<'_> {
         }
     }
 }
+
+//
+
+// TODO everything above here is gl stuff and could maybe be put in its own module
 
 //
 
@@ -1054,36 +1061,61 @@ impl DefaultLocations {
         }
     }
 
-    pub fn projection(&self) -> Location {
-        self.projection
+    pub fn projection(&self) -> &Location {
+        &self.projection
     }
 
-    pub fn view(&self) -> Location {
-        self.view
+    pub fn view(&self) -> &Location {
+        &self.view
     }
 
-    pub fn model(&self) -> Location {
-        self.model
+    pub fn model(&self) -> &Location {
+        &self.model
     }
 
-    pub fn time(&self) -> Location {
-        self.time
+    pub fn time(&self) -> &Location {
+        &self.time
     }
 
-    pub fn flip_uvs(&self) -> Location {
-        self.flip_uvs
+    pub fn flip_uvs(&self) -> &Location {
+        &self.flip_uvs
     }
 
-    pub fn base_color(&self) -> Location {
-        self.base_color
+    pub fn base_color(&self) -> &Location {
+        &self.base_color
     }
 
-    pub fn diffuse(&self) -> Location {
-        self.tx_diffuse
+    pub fn diffuse(&self) -> &Location {
+        &self.tx_diffuse
     }
 
-    pub fn normal(&self) -> Location {
-        self.tx_normal
+    pub fn normal(&self) -> &Location {
+        &self.tx_normal
+    }
+
+    /// Note: does not set textures
+    pub fn reset(&self) {
+        let m4_iden: Matrix4<f32> = Matrix4::identity();
+        self.projection().set(&m4_iden);
+        self.view().set(&m4_iden);
+        self.model().set(&m4_iden);
+        self.base_color().set(&Color::white());
+        self.flip_uvs().set(&false);
+        self.time().set(&(0. as GLfloat));
+    }
+
+    pub fn set_sprite_px(&self, texture: &Texture, transform: &Transform2d) {
+        self.diffuse().set(&TextureData::diffuse(texture));
+        self.model().set(&Matrix4::from(*transform));
+    }
+
+    pub fn set_sprite(&self, texture: &Texture, transform: &Transform2d) {
+        let temp = Transform2d {
+            scale: Vector2::new(transform.scale.x * texture.width() as GLfloat,
+                                transform.scale.y * texture.height() as GLfloat),
+            .. *transform
+        };
+        self.set_sprite_px(texture, &temp);
     }
 }
 
@@ -1182,7 +1214,6 @@ impl BitmapFont {
 //
 
 #[derive(Debug)]
-// TODO packed
 #[repr(C)]
 pub struct SbSprite {
     pub uv: UvRegion,
@@ -1286,13 +1317,15 @@ impl Spritebatch {
         }
     }
 
-    // TODO is this a good interface?
-    //      its ok
-    //          maybe just return the ref and have the caller set defaults as necessary ?
-    //   ulitmately copies defaults first then  returns ref
-    //     c version allows you to change data then copy
-    //     pretty much same thing, unless you map the buffer and write to it directly
+    /// Returns an SbSprite for the caller to override. Will be uninitialized.
     pub fn pull(&mut self) -> &mut SbSprite {
+        if self.buffer.empty_count() == 0 {
+            self.draw();
+        }
+        self.buffer.pull().unwrap()
+    }
+
+    pub fn pull_default(&mut self) -> &mut SbSprite {
         if self.buffer.empty_count() == 0 {
             self.draw();
         }
@@ -1309,12 +1342,12 @@ impl Spritebatch {
         let font_h = font.texture().height() as GLfloat;
         for ch in text.chars() {
             let region_w = font.region(ch).width() as GLfloat;
-            let sp = self.pull();
+            let sp = self.pull_default();
             sp.uv = font.uv_region(ch);
             sp.transform.position.x = x;
             sp.transform.scale.x = region_w;
             sp.transform.scale.y = font_h;
-            x += region_w;
+            x += region_w + 1.;
         }
 
         self.end();
@@ -1342,9 +1375,8 @@ impl Spritebatch {
 
 // lined rect
 
-/*
 // turn this into just a ShapeDrawer
-pub struct Drawer {
+pub struct ShapeDrawer {
     line_thickness: GLfloat,
 
     mesh_quad: Mesh,
@@ -1353,7 +1385,7 @@ pub struct Drawer {
     tex_blue: Texture,
 }
 
-impl Drawer {
+impl ShapeDrawer {
     pub fn new(circle_resolution: usize) -> Self {
         let white = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
         let blue = RgbaImage::from_pixel(1, 1, Rgba::from([0, 0, 255, 0]));
@@ -1374,59 +1406,25 @@ impl Drawer {
         &mut self.line_thickness
     }
 
-    // FIXME put this in locations
-    pub fn reset_uniforms(&self, locations: &DefaultLocations) {
-        let m4_iden = Matrix4::identity();
-        m4_iden.uniform(locations.projection());
-        m4_iden.uniform(locations.view());
-        m4_iden.uniform(locations.model());
-        Color::white().uniform(locations.base_color());
-        false.uniform(locations.flip_uvs());
-        (0. as GLfloat).uniform(locations.time());
-        TextureData::diffuse(&self.tex_white).uniform(locations.diffuse());
-        TextureData::normal(&self.tex_blue).uniform(locations.normal());
-    }
-
     /// Sets locations.diffuse() and locations.model()
-    // FIXME put this in locations
-    pub fn sprite_px(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
-        TextureData::diffuse(texture).uniform(locations.diffuse());
-        // Matrix4::from_transform2d(transform).uniform(locations.model());
+    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<GLfloat>) {
+        let temp = Transform2d {
+            position: rect.corner1,
+            scale:    Vector2::new(rect.width(), rect.height()),
+            .. Transform2d::identity()
+        };
+        locations.set_sprite_px(&self.tex_white, &temp);
         self.mesh_quad.draw();
     }
 
     /// Sets locations.diffuse() and locations.model()
-    // FIXME put this in locations
-    pub fn sprite(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
-        let temp = Transform2d {
-            scale: Vector2::new(transform.scale.x * texture.width() as GLfloat,
-                                transform.scale.y * texture.height() as GLfloat),
-            .. *transform
-        };
-        self.sprite_px(locations, texture, &temp);
-    }
-
-    /// Sets locations.diffuse() and locations.model()
-    ///   `rect` should be in the form: [x1, y1, x2, y2]
-    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<GLfloat>) {
-        let temp = Transform2d {
-            position: rect.corner1,
-            scale:    Vector2::new(rect.width(),
-                                   rect.height()),
-            rotation: 0.,
-        };
-        self.sprite_px(locations, &self.tex_white, &temp);
-    }
-
-    /// Sets locations.diffuse() and locations.model()
     pub fn circle(&self, locations: &DefaultLocations, x: GLfloat, y: GLfloat, r: GLfloat) {
-        let transform = Transform2d {
+        let temp = Transform2d {
             position: Point2::new(x, y),
             scale:    Vector2::new(r, r),
-            rotation: 0.,
+            .. Transform2d::identity()
         };
-        TextureData::diffuse(&self.tex_white).uniform(locations.diffuse());
-        // Matrix4::from_transform2d(&transform).uniform(locations.model());
+        locations.set_sprite_px(&self.tex_white, &temp);
         self.mesh_circle.draw();
     }
 
@@ -1455,4 +1453,3 @@ impl Drawer {
         }
     }
 }
-*/
