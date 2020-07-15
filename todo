@@ -2,3 +2,6 @@ clean up naming of variables and uniforms in shaders
 
 Pool<T>
 particles
+
+content not public module
+ranme GlfwContext and GlfwContextSettings to glfw::Context etc

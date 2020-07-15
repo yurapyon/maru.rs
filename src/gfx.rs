@@ -13,6 +13,7 @@ use std::{
 
 use cgmath::{
     prelude::*,
+    Point2,
     Vector2,
     Vector4,
     Matrix4,
@@ -896,6 +897,10 @@ impl Mesh {
 
 // TODO find some way to have location.set(val) ??
 //        rather than val.uniform(location)
+//  doing it this way wouldnt let you add new uniform types
+//    would have to implement new versions of location.set
+//  Could do set() with something that implements Uniform,
+//   but that kindof defeats the purpose
 
 // note: sometimes location will be -1
 //       if location can not be found
@@ -924,6 +929,7 @@ impl Location {
 
 //
 
+// TODO taking raw locations feels a litte weird
 pub trait Uniform {
     fn uniform(&self, loc: Location);
 }
@@ -1083,8 +1089,10 @@ impl DefaultLocations {
 
 //
 
-type TextureRegion = AABB<u32>;
-type UvRegion = AABB<GLfloat>;
+pub type TextureRegion = AABB<u32>;
+pub type UvRegion = AABB<GLfloat>;
+
+// TODO use bdf_font
 
 // just use ascii for now
 // maybe in the future use utf8
@@ -1174,6 +1182,7 @@ impl BitmapFont {
 //
 
 #[derive(Debug)]
+// TODO packed
 #[repr(C)]
 pub struct SbSprite {
     pub uv: UvRegion,
@@ -1185,7 +1194,7 @@ impl Default for SbSprite {
     fn default() -> Self {
         Self {
             uv: UvRegion::new(0., 0., 1., 1.),
-            transform: Default::default(),
+            transform: Transform2d::identity(),
             color: Color::new_rgba(1., 1., 1., 1.),
         }
     }
@@ -1292,6 +1301,7 @@ impl Spritebatch {
         ret
     }
 
+    // TODO glyph strings, print glyph strings
     pub fn print(&mut self, font: &BitmapFont, text: &str) {
         self.begin();
 
@@ -1320,6 +1330,7 @@ impl Spritebatch {
 //        last after projection
 //      put it in drawer?
 //        wont work for anything else
+// usage of the drawer feels alittle weird, between too high level and too lowlevel
 
 // this is just a bunch of functions that generate uniforms on the fly
 //   and applies them to current program
@@ -1331,6 +1342,8 @@ impl Spritebatch {
 
 // lined rect
 
+/*
+// turn this into just a ShapeDrawer
 pub struct Drawer {
     line_thickness: GLfloat,
 
@@ -1361,6 +1374,7 @@ impl Drawer {
         &mut self.line_thickness
     }
 
+    // FIXME put this in locations
     pub fn reset_uniforms(&self, locations: &DefaultLocations) {
         let m4_iden = Matrix4::identity();
         m4_iden.uniform(locations.projection());
@@ -1374,13 +1388,15 @@ impl Drawer {
     }
 
     /// Sets locations.diffuse() and locations.model()
+    // FIXME put this in locations
     pub fn sprite_px(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
         TextureData::diffuse(texture).uniform(locations.diffuse());
-        Matrix4::from_transform2d(transform).uniform(locations.model());
+        // Matrix4::from_transform2d(transform).uniform(locations.model());
         self.mesh_quad.draw();
     }
 
     /// Sets locations.diffuse() and locations.model()
+    // FIXME put this in locations
     pub fn sprite(&self, locations: &DefaultLocations, texture: &Texture, transform: &Transform2d) {
         let temp = Transform2d {
             scale: Vector2::new(transform.scale.x * texture.width() as GLfloat,
@@ -1394,7 +1410,7 @@ impl Drawer {
     ///   `rect` should be in the form: [x1, y1, x2, y2]
     pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<GLfloat>) {
         let temp = Transform2d {
-            position: Vector2::new(rect.x1, rect.y1),
+            position: rect.corner1,
             scale:    Vector2::new(rect.width(),
                                    rect.height()),
             rotation: 0.,
@@ -1405,12 +1421,12 @@ impl Drawer {
     /// Sets locations.diffuse() and locations.model()
     pub fn circle(&self, locations: &DefaultLocations, x: GLfloat, y: GLfloat, r: GLfloat) {
         let transform = Transform2d {
-            position: Vector2::new(x, y),
+            position: Point2::new(x, y),
             scale:    Vector2::new(r, r),
             rotation: 0.,
         };
         TextureData::diffuse(&self.tex_white).uniform(locations.diffuse());
-        Matrix4::from_transform2d(&transform).uniform(locations.model());
+        // Matrix4::from_transform2d(&transform).uniform(locations.model());
         self.mesh_circle.draw();
     }
 
@@ -1439,3 +1455,4 @@ impl Drawer {
         }
     }
 }
+*/

@@ -2,27 +2,21 @@
 
 use std::{
     mem,
-    ops::Add
 };
 
 use cgmath::{
     prelude::*,
+    Point2,
     Vector2,
     Vector3,
     Ortho,
     Matrix4,
+    Rad,
 
     BaseNum,
 };
 use image::{
     self,
-};
-use gl::{
-    self,
-    types::*,
-};
-use num::{
-    traits::AsPrimitive
 };
 
 //
@@ -33,8 +27,10 @@ use crate::gfx::{
 
 //
 
-// TODO where to use GLfloat or just use a rust float
-//   could just put some compiler error is GLfloat != f32
+// note: GLfloats are always going to be f32
+// https://www.khronos.org/opengl/wiki/OpenGL_Type
+
+// TODO use cgmath the right way
 
 //
 
@@ -42,14 +38,14 @@ use crate::gfx::{
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Color {
-    pub r: GLfloat,
-    pub g: GLfloat,
-    pub b: GLfloat,
-    pub a: GLfloat,
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
 }
 
 impl Color {
-    pub fn new_rgba(r: GLfloat, g: GLfloat, b: GLfloat, a:GLfloat) -> Self {
+    pub fn new_rgba(r: f32, g: f32, b: f32, a:f32) -> Self {
         Self {
             r,
             g,
@@ -85,8 +81,8 @@ impl From<Color> for image::Rgba<u8> {
     }
 }
 
-impl AsRef<[GLfloat; 4]> for Color {
-    fn as_ref(&self) -> &[GLfloat; 4] {
+impl AsRef<[f32; 4]> for Color {
+    fn as_ref(&self) -> &[f32; 4] {
         unsafe {
             mem::transmute(self)
         }
@@ -99,47 +95,42 @@ impl AsRef<[GLfloat; 4]> for Color {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct AABB<T> {
-    pub x1: T,
-    pub y1: T,
-    pub x2: T,
-    pub y2: T,
+    pub corner1: Point2<T>,
+    pub corner2: Point2<T>,
 }
 
 impl<T> AABB<T> {
     pub fn new(x1: T, y1: T, x2: T, y2: T) -> Self {
         Self {
-            x1,
-            y1,
-            x2,
-            y2,
+            corner1: Point2::new(x1, y1),
+            corner2: Point2::new(x2, y2),
         }
     }
 }
 
 impl<T: BaseNum> AABB<T> {
     pub fn width(&self) -> T {
-        self.x2 - self.x1
+        self.corner2.x - self.corner1.x
     }
 
     pub fn height(&self) -> T {
-        self.y2 - self.y1
+        self.corner2.y - self.corner1.y
+    }
+
+    /// Return an `AABB<f32>` normalized to the texture width and height.
+    pub fn normalized(&self, tex: &Texture) -> AABB<f32> {
+        let fl_w = tex.width() as f32;
+        let fl_h = tex.height() as f32;
+        let corner1 = self.corner1.cast().unwrap() / fl_w;
+        let corner2 = self.corner2.cast().unwrap() / fl_h;
+        AABB {
+            corner1,
+            corner2,
+        }
     }
 }
 
-impl<T: BaseNum + AsPrimitive<GLfloat>> AABB<T> {
-    /// Return an `AABB<GLfloat>` normalized to the texture width and height.
-    pub fn normalized(&self, tex: &Texture) -> AABB<GLfloat> {
-        let fl_w = tex.width() as GLfloat;
-        let fl_h = tex.height() as GLfloat;
-        AABB::new(
-            self.x1.as_() / fl_w,
-            self.y1.as_() / fl_h,
-            self.x2.as_() / fl_w,
-            self.y2.as_() / fl_h,
-        )
-    }
-}
-
+/*
 impl<T: BaseNum> Add for AABB<T> {
     type Output = Self;
 
@@ -166,15 +157,17 @@ impl<T: BaseNum + Zero> Zero for AABB<T> {
         self.y2 == Zero::zero()
     }
 }
+*/
 
 //
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
-    pub position: Vector3<GLfloat>,
-    pub normal: Vector3<GLfloat>,
-    pub uv: Vector2<GLfloat>,
+    // TODO point3, vector3, point2
+    pub position: Vector3<f32>,
+    pub normal: Vector3<f32>,
+    pub uv: Vector2<f32>,
 }
 
 impl Default for Vertex {
@@ -189,7 +182,7 @@ impl Default for Vertex {
 
 pub struct Vertices {
     pub vertices: Vec<Vertex>,
-    pub indices: Vec<GLuint>,
+    pub indices: Vec<u32>,
 }
 
 impl Vertices {
@@ -238,7 +231,7 @@ impl Vertices {
 
         let mut vertices = Vec::new();
 
-        let angle_step = (consts::PI * 2.) / (resolution as GLfloat);
+        let angle_step = (consts::PI * 2.) / (resolution as f32);
 
         for i in 0..resolution {
             let at = (i as f32) * angle_step;
@@ -259,24 +252,54 @@ impl Vertices {
 }
 
 // TODO eq derives
+//      rename default to identity
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Transform2d {
-    pub position: Vector2<GLfloat>,
-    pub scale: Vector2<GLfloat>,
-    pub rotation: GLfloat,
+    pub position: Point2<f32>,
+    pub scale: Vector2<f32>,
+    pub rotation: Rad<f32>,
 }
 
 impl Transform2d {
-    pub fn new(x: GLfloat, y: GLfloat, sx: GLfloat, sy: GLfloat, r: GLfloat) -> Self {
+    pub fn new(x: f32, y: f32, sx: f32, sy: f32, r: f32) -> Self {
         Self {
-            position: Vector2::new(x, y),
+            position: Point2::new(x, y),
             scale: Vector2::new(sx, sy),
-            rotation: r,
+            rotation: Rad(r),
         }
     }
+
+    /// Multiplicitave identity.
+    pub fn identity() -> Self {
+        Self {
+            position: Point2::origin(),
+            scale:    Vector2::new(1., 1.),
+            rotation: Rad::zero(),
+        }
+    }
+
+    pub fn translate(&mut self, x: f32, y: f32) {
+        self.position.x += x;
+        self.position.y += y;
+    }
+
+    pub fn scale_from_origin(&mut self, sx: f32, sy: f32) {
+        self.position.x *= sx;
+        self.position.y *= sy;
+        self.scale.x *= sx;
+        self.scale.y *= sy;
+    }
+
+    pub fn rotate_from_origin(&mut self, r: f32) {
+        // self.position.x += x;
+        // self.position.y += y;
+        self.rotation += Rad(r);
+    }
+
 }
 
+/*
 impl Default for Transform2d {
     fn default() -> Self {
         Self {
@@ -286,6 +309,7 @@ impl Default for Transform2d {
         }
     }
 }
+*/
 
 //
 
@@ -296,13 +320,13 @@ pub mod ext {
         fn screen(width: u32, height: u32) -> Ortho<S>;
     }
 
-    impl OrthoExt<GLfloat> for Ortho<GLfloat> {
+    impl OrthoExt<f32> for Ortho<f32> {
         fn screen(width: u32, height: u32) -> Self {
             Self {
                 left:   0.,
-                right:  width as GLfloat,
+                right:  width as f32,
                 top:    0.,
-                bottom: height as GLfloat,
+                bottom: height as f32,
                 near:   -1.,
                 far:    1.,
             }
@@ -311,13 +335,9 @@ pub mod ext {
 
     //
 
-    // TODO use From<> trait
-    pub trait Matrix4Ext<S> {
-        fn from_transform2d(t2d: &Transform2d) -> Matrix4<S>;
-    }
-
-    impl Matrix4Ext<GLfloat> for Matrix4<GLfloat> {
-        fn from_transform2d(t2d: &Transform2d) -> Self {
+    /*
+    impl From<Transform2d> for Matrix4<f32> {
+        fn from(t2d: Transform2d) -> Self {
             let mut ret = Self::identity();
             let sx = t2d.scale.x;
             let sy = t2d.scale.y;
@@ -332,4 +352,5 @@ pub mod ext {
             ret
         }
     }
+    */
 }
