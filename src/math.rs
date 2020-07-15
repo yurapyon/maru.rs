@@ -4,36 +4,59 @@ use std::{
     mem,
 };
 
-use cgmath::{
-    prelude::*,
-    Point2,
-    Point3,
-    Vector2,
-    Vector3,
-    Ortho,
-    Matrix4,
-    Rad,
-
-    BaseNum,
+use approx::{
+    AbsDiffEq
 };
 use image::{
     self,
 };
+use nalgebra_glm as glm;
+use nalgebra::{
+    Scalar,
+    ClosedAdd,
+    ClosedSub,
+    ClosedMul,
+};
+use num_traits::{
+    FromPrimitive,
+    ToPrimitive,
+    Bounded,
+};
 
 //
 
-use crate::gfx::{
-    Texture,
-};
+pub trait Number:
+    Scalar
+    + Copy
+    + PartialOrd
+    + ClosedAdd
+    + ClosedSub
+    + ClosedMul
+    + AbsDiffEq<Epsilon = Self>
+    + FromPrimitive
+    + ToPrimitive
+    + Bounded
+{
+}
+
+impl<T> Number for T
+where
+    T: Scalar
+       + Copy
+       + PartialOrd
+       + ClosedAdd
+       + ClosedSub
+       + ClosedMul
+       + AbsDiffEq<Epsilon = Self>
+       + FromPrimitive
+       + ToPrimitive
+       + Bounded
+{}
 
 //
 
 // note: GLfloats are always going to be f32
 // https://www.khronos.org/opengl/wiki/OpenGL_Type
-
-// TODO use cgmath the right way
-// for now just use transform2d the way i have it
-// someday try and use matrix3 instead with proper linear algebra stuff?
 
 //
 
@@ -97,21 +120,19 @@ impl AsRef<[f32; 4]> for Color {
 /// An AABB rectangle.
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
-pub struct AABB<T> {
-    pub corner1: Point2<T>,
-    pub corner2: Point2<T>,
+pub struct AABB<T: Number> {
+    pub corner1: glm::TVec2<T>,
+    pub corner2: glm::TVec2<T>,
 }
 
-impl<T> AABB<T> {
+impl<T: Number> AABB<T> {
     pub fn new(x1: T, y1: T, x2: T, y2: T) -> Self {
         Self {
-            corner1: Point2::new(x1, y1),
-            corner2: Point2::new(x2, y2),
+            corner1: glm::vec2(x1, y1),
+            corner2: glm::vec2(x2, y2),
         }
     }
-}
 
-impl<T: BaseNum> AABB<T> {
     pub fn width(&self) -> T {
         self.corner2.x - self.corner1.x
     }
@@ -120,11 +141,10 @@ impl<T: BaseNum> AABB<T> {
         self.corner2.y - self.corner1.y
     }
 
-    /// Return an `AABB<f32>` normalized to the texture width and height.
-    pub fn normalized(&self, tex: &Texture) -> AABB<f32> {
-        let tx_point = Point2::new(tex.width() as f32, tex.height() as f32);
-        let corner1 = self.corner1.cast().unwrap().div_element_wise(tx_point);
-        let corner2 = self.corner2.cast().unwrap().div_element_wise(tx_point);
+    pub fn normalized(&self, point: &glm::TVec2<T>) -> AABB<f32> {
+        let point = point.map(| x | x.to_f32().unwrap());
+        let corner1 = self.corner1.map(| x | x.to_f32().unwrap()).component_div(&point);
+        let corner2 = self.corner2.map(| x | x.to_f32().unwrap()).component_div(&point);
         AABB {
             corner1,
             corner2,
@@ -132,51 +152,23 @@ impl<T: BaseNum> AABB<T> {
     }
 }
 
-/*
-impl<T: BaseNum> Add for AABB<T> {
-    type Output = Self;
-
-    fn add(self, other: Self::Output) -> Self {
-        Self::new(self.x1 + other.x1,
-                  self.y1 + other.y1,
-                  self.x2 + other.x2,
-                  self.y2 + other.y2,)
-    }
-}
-
-impl<T: BaseNum + Zero> Zero for AABB<T> {
-    fn zero() -> Self {
-        Self::new(Zero::zero(),
-                  Zero::zero(),
-                  Zero::zero(),
-                  Zero::zero(),)
-    }
-
-    fn is_zero(&self) -> bool {
-        self.x1 == Zero::zero() &&
-        self.y1 == Zero::zero() &&
-        self.x2 == Zero::zero() &&
-        self.y2 == Zero::zero()
-    }
-}
-*/
 
 //
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
-    pub position: Point3<f32>,
-    pub normal: Vector3<f32>,
-    pub uv: Point2<f32>,
+    pub position: glm::Vec3,
+    pub normal: glm::Vec3,
+    pub uv: glm::Vec2,
 }
 
 impl Vertex {
     fn zero() -> Self {
         Self {
-            position: Point3::new(0., 0., 0.),
-            normal:   Vector3::new(0., 0., 0.),
-            uv:       Point2::new(0., 0.),
+            position: glm::vec3(0., 0., 0.),
+            normal: glm::vec3(0., 0., 0.),
+            uv: glm::vec2(0., 0.),
         }
     }
 }
@@ -191,26 +183,26 @@ impl Vertices {
         let mut vertices = Vec::with_capacity(4);
 
         vertices.push(Vertex {
-            position: Point3::new(1., 1., 0.),
-            uv:       Point2::new(1., 1.),
+            position: glm::vec3(1., 1., 0.),
+            uv:       glm::vec2(1., 1.),
             .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: Point3::new(1., 0., 0.),
-            uv:       Point2::new(1., 0.),
+            position: glm::vec3(1., 0., 0.),
+            uv:       glm::vec2(1., 0.),
             .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: Point3::new(0., 1., 0.),
-            uv:       Point2::new(0., 1.),
+            position: glm::vec3(0., 1., 0.),
+            uv:       glm::vec2(0., 1.),
             .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: Point3::new(0., 0., 0.),
-            uv:       Point2::new(0., 0.),
+            position: glm::vec3(0., 0., 0.),
+            uv:       glm::vec2(0., 0.),
             .. Vertex::zero()
         });
 
@@ -239,8 +231,8 @@ impl Vertices {
             let x = at.cos() / 2.;
             let y = at.sin() / 2.;
             vertices.push(Vertex {
-                position: Point3::new(x, y, 0.),
-                uv:       Point2::new(x + 0.5, y + 0.5),
+                position: glm::vec3(x, y, 0.),
+                uv:       glm::vec2(x + 0.5, y + 0.5),
                 .. Vertex::zero()
             });
         }
@@ -257,26 +249,25 @@ impl Vertices {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Transform2d {
-    pub position: Point2<f32>,
-    pub scale: Vector2<f32>,
-    pub rotation: Rad<f32>,
+    pub position: glm::Vec2,
+    pub scale: glm::Vec2,
+    pub rotation: f32,
 }
 
 impl Transform2d {
     pub fn new(x: f32, y: f32, sx: f32, sy: f32, r: f32) -> Self {
         Self {
-            position: Point2::new(x, y),
-            scale: Vector2::new(sx, sy),
-            rotation: Rad(r),
+            position: glm::vec2(x, y),
+            scale:    glm::vec2(sx, sy),
+            rotation: r,
         }
     }
 
-    /// Multiplicitave identity.
     pub fn identity() -> Self {
         Self {
-            position: Point2::origin(),
-            scale:    Vector2::new(1., 1.),
-            rotation: Rad::zero(),
+            position: glm::Vec2::zeros(),
+            scale:    glm::Vec2::repeat(1.),
+            rotation: 0.,
         }
     }
 
@@ -306,38 +297,25 @@ impl Transform2d {
 pub mod ext {
     use super::*;
 
-    pub trait OrthoExt<S> {
-        fn screen(width: u32, height: u32) -> Ortho<S>;
-    }
-
-    impl OrthoExt<f32> for Ortho<f32> {
-        fn screen(width: u32, height: u32) -> Self {
-            Self {
-                left:   0.,
-                right:  width as f32,
-                top:    0.,
-                bottom: height as f32,
-                near:   -1.,
-                far:    1.,
-            }
-        }
+    fn ortho_screen(width: u32, height: u32) -> glm::Mat4 {
+        glm::ortho(0., width as f32, height as f32, 0., -1., 1.)
     }
 
     //
 
-    impl From<Transform2d> for Matrix4<f32> {
+    impl From<Transform2d> for glm::Mat4 {
         fn from(t2d: Transform2d) -> Self {
             let mut ret = Self::identity();
             let sx = t2d.scale.x;
             let sy = t2d.scale.y;
             let rc = t2d.rotation.cos();
             let rs = t2d.rotation.sin();
-            ret[0][0] =  rc * sx;
-            ret[0][1] =  rs * sx;
-            ret[1][0] = -rs * sy;
-            ret[1][1] =  rc * sy;
-            ret[3][0] = t2d.position.x;
-            ret[3][1] = t2d.position.y;
+            ret[(0, 0)] =  rc * sx;
+            ret[(0, 1)] =  rs * sx;
+            ret[(1, 0)] = -rs * sy;
+            ret[(1, 1)] =  rc * sy;
+            ret[(3, 0)] = t2d.position.x;
+            ret[(3, 1)] = t2d.position.y;
             ret
         }
     }

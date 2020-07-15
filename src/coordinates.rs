@@ -1,9 +1,4 @@
-use cgmath::{
-    prelude::*,
-    Vector2,
-    Matrix4,
-    Rad,
-};
+use nalgebra_glm as glm;
 
 use crate::{
     gfx::{
@@ -11,23 +6,25 @@ use crate::{
     },
 };
 
+// TODO could generalize this to 3d
+// or not
 pub enum CoordinateTransform {
-    Translate(Vector2<f32>),
-    Scale(Vector2<f32>),
-    Rotate(Rad<f32>),
+    Translate(glm::Vec2),
+    Scale(glm::Vec2),
+    Rotate(f32),
 }
 
 /// Draw with offsets.
 /// Uses the view matrix of the locations.
 pub struct CoordinateStack {
     stk: Vec<CoordinateTransform>,
-    composed: Matrix4<f32>,
+    composed: glm::Mat4,
 }
 
 impl CoordinateStack {
     pub fn with_capacity(size: usize) -> Self {
         let stk = Vec::with_capacity(size);
-        let composed = Matrix4::identity();
+        let composed = glm::Mat4::identity();
         Self {
             stk,
             composed,
@@ -44,23 +41,23 @@ impl CoordinateStack {
 
     pub fn clear(&mut self, locs: &DefaultLocations) {
         self.stk.clear();
-        self.composed = Matrix4::identity();
+        self.composed = glm::Mat4::identity();
         self.on_changed(locs);
     }
 
     pub fn push(&mut self, t: CoordinateTransform, locs: &DefaultLocations) {
-        let temp = match t {
+        self.composed = match t {
             CoordinateTransform::Translate(v) => {
-                Matrix4::from_translation(v.extend(0.))
+                glm::translate(&self.composed, &glm::vec2_to_vec3(&v))
             },
             CoordinateTransform::Scale(v) => {
-                Matrix4::from_nonuniform_scale(v.x, v.y, 0.)
+                let scl = glm::vec3(v.x, v.y, 1.);
+                glm::scale(&self.composed, &scl)
             },
             CoordinateTransform::Rotate(r) => {
-                Matrix4::from_angle_z(r)
+                glm::rotate_z(&self.composed, r)
             },
         };
-        self.composed = temp * self.composed;
         self.on_changed(locs);
         self.stk.push(t);
     }
@@ -69,18 +66,18 @@ impl CoordinateStack {
     pub fn pop(&mut self, locs: &DefaultLocations) {
         match self.stk.pop() {
             Some(t) => {
-                let temp = match t {
+                self.composed = match t {
                     CoordinateTransform::Translate(v) => {
-                        Matrix4::from_translation(-v.extend(0.))
+                        glm::translate(&self.composed, &glm::vec2_to_vec3(&-v))
                     },
                     CoordinateTransform::Scale(v) => {
-                        Matrix4::from_nonuniform_scale(1. / v.x, 1. / v.y, 0.)
+                        let scl = glm::vec3(v.x, v.y, 1.).map(f32::recip);
+                        glm::scale(&self.composed, &scl)
                     },
                     CoordinateTransform::Rotate(r) => {
-                        Matrix4::from_angle_z(-r)
+                        glm::rotate_z(&self.composed, -r)
                     },
                 };
-                self.composed = temp * self.composed;
                 self.on_changed(locs);
             },
             None => {
@@ -89,4 +86,3 @@ impl CoordinateStack {
         }
     }
 }
-

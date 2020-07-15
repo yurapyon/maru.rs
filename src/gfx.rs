@@ -11,13 +11,6 @@ use std::{
     mem,
 };
 
-use cgmath::{
-    prelude::*,
-    Point2,
-    Vector2,
-    Vector4,
-    Matrix4,
-};
 use gl::{
     self,
     types::*,
@@ -28,6 +21,7 @@ use image::{
     Rgba
 };
 use memoffset::offset_of;
+use nalgebra_glm as glm;
 
 //
 
@@ -38,6 +32,8 @@ use crate::math::{
     Vertex,
     Vertices,
 };
+
+// TODO dont use gltypes for anything
 
 //
 
@@ -969,7 +965,7 @@ impl Uniform for GLuint {
     }
 }
 
-impl Uniform for Vector4<GLfloat> {
+impl Uniform for glm::TVec4<GLfloat> {
     fn uniform(&self, loc: &Location) {
         unsafe {
             let buf: &[GLfloat; 4] = self.as_ref();
@@ -987,10 +983,10 @@ impl Uniform for Color {
     }
 }
 
-impl Uniform for Matrix4<GLfloat> {
+impl Uniform for glm::TMat4<GLfloat> {
     fn uniform(&self, loc: &Location) {
         unsafe {
-            let buf: &[GLfloat; 16] = self.as_ref();
+            let buf: &[GLfloat] = self.as_slice();
             gl::UniformMatrix4fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
         }
     }
@@ -1095,7 +1091,7 @@ impl DefaultLocations {
 
     /// Note: does not set textures
     pub fn reset(&self) {
-        let m4_iden: Matrix4<f32> = Matrix4::identity();
+        let m4_iden = glm::Mat4::identity();
         self.projection().set(&m4_iden);
         self.view().set(&m4_iden);
         self.model().set(&m4_iden);
@@ -1106,13 +1102,13 @@ impl DefaultLocations {
 
     pub fn set_sprite_px(&self, texture: &Texture, transform: &Transform2d) {
         self.diffuse().set(&TextureData::diffuse(texture));
-        self.model().set(&Matrix4::from(*transform));
+        self.model().set(&glm::Mat4::from(*transform));
     }
 
     pub fn set_sprite(&self, texture: &Texture, transform: &Transform2d) {
         let temp = Transform2d {
-            scale: Vector2::new(transform.scale.x * texture.width() as GLfloat,
-                                transform.scale.y * texture.height() as GLfloat),
+            scale: glm::vec2(transform.scale.x * texture.width() as GLfloat,
+                             transform.scale.y * texture.height() as GLfloat),
             .. *transform
         };
         self.set_sprite_px(texture, &temp);
@@ -1177,8 +1173,10 @@ impl BitmapFont {
         texture.set_wrap(gl::CLAMP_TO_EDGE, gl::CLAMP_TO_EDGE);
         texture.set_filter(gl::NEAREST, gl::NEAREST);
 
+        let tx_point = glm::vec2(texture.width() as u32, texture.height() as u32);
+
         let uv_regions = regions.iter()
-                                .map(| region | region.normalized(&texture))
+                                .map(| region | region.normalized(&tx_point))
                                 .collect();
 
         Self {
@@ -1410,7 +1408,7 @@ impl ShapeDrawer {
     pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<GLfloat>) {
         let temp = Transform2d {
             position: rect.corner1,
-            scale:    Vector2::new(rect.width(), rect.height()),
+            scale:    glm::vec2(rect.width(), rect.height()),
             .. Transform2d::identity()
         };
         locations.set_sprite_px(&self.tex_white, &temp);
@@ -1420,8 +1418,8 @@ impl ShapeDrawer {
     /// Sets locations.diffuse() and locations.model()
     pub fn circle(&self, locations: &DefaultLocations, x: GLfloat, y: GLfloat, r: GLfloat) {
         let temp = Transform2d {
-            position: Point2::new(x, y),
-            scale:    Vector2::new(r, r),
+            position: glm::vec2(x, y),
+            scale:    glm::vec2(r, r),
             .. Transform2d::identity()
         };
         locations.set_sprite_px(&self.tex_white, &temp);

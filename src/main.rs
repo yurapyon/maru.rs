@@ -1,3 +1,6 @@
+fn main() {
+}
+/*
 use std::{
     thread,
     time,
@@ -110,3 +113,4 @@ fn main() {
         thread::sleep(s_tm);
     }
 }
+*/
