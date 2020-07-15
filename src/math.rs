@@ -51,7 +51,8 @@ where
        + FromPrimitive
        + ToPrimitive
        + Bounded
-{}
+{
+}
 
 //
 
@@ -297,7 +298,7 @@ impl Transform2d {
 pub mod ext {
     use super::*;
 
-    fn ortho_screen(width: u32, height: u32) -> glm::Mat4 {
+    pub fn ortho_screen(width: u32, height: u32) -> glm::Mat4 {
         glm::ortho(0., width as f32, height as f32, 0., -1., 1.)
     }
 

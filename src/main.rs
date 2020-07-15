@@ -1,15 +1,8 @@
-fn main() {
-}
-/*
 use std::{
     thread,
     time,
 };
 
-use cgmath::{
-    Matrix4,
-    Ortho,
-};
 use gl::{
     self,
     types::*,
@@ -21,6 +14,7 @@ use glfw::{
     Key,
 };
 use image;
+// use nalgebra_glm as glm;
 
 //
 
@@ -42,7 +36,7 @@ fn main() {
     let mahou_tex = Texture::new(&mahou_img);
     let mahou_td = TextureData::diffuse(&mahou_tex);
 
-    let proj = Matrix4::from(Ortho::screen(600, 400));
+    let proj = ortho_screen(600, 400);
     let mut time: GLfloat = 0.;
 
     let draw = ShapeDrawer::new(50);
@@ -113,4 +107,3 @@ fn main() {
         thread::sleep(s_tm);
     }
 }
-*/

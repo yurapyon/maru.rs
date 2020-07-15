@@ -46,6 +46,20 @@ impl CoordinateStack {
     }
 
     pub fn push(&mut self, t: CoordinateTransform, locs: &DefaultLocations) {
+        let temp = match t {
+            CoordinateTransform::Translate(v) => {
+                glm::translation(&glm::vec2_to_vec3(&v))
+            },
+            CoordinateTransform::Scale(v) => {
+                let scl = glm::vec3(v.x, v.y, 1.);
+                glm::scaling(&scl)
+            },
+            CoordinateTransform::Rotate(r) => {
+                glm::rotation(r, &glm::vec3(0., 0., 1.))
+            },
+        };
+        self.composed = temp * self.composed;
+        /*
         self.composed = match t {
             CoordinateTransform::Translate(v) => {
                 glm::translate(&self.composed, &glm::vec2_to_vec3(&v))
@@ -58,6 +72,7 @@ impl CoordinateStack {
                 glm::rotate_z(&self.composed, r)
             },
         };
+        */
         self.on_changed(locs);
         self.stk.push(t);
     }
@@ -66,6 +81,21 @@ impl CoordinateStack {
     pub fn pop(&mut self, locs: &DefaultLocations) {
         match self.stk.pop() {
             Some(t) => {
+
+                let temp = match t {
+                    CoordinateTransform::Translate(v) => {
+                        glm::translation(&glm::vec2_to_vec3(&-v))
+                    },
+                    CoordinateTransform::Scale(v) => {
+                        let scl = glm::vec3(v.x, v.y, 1.).map(f32::recip);
+                        glm::scaling(&scl)
+                    },
+                    CoordinateTransform::Rotate(r) => {
+                        glm::rotation(r, &glm::vec3(0., 0., -1.))
+                    },
+                };
+                self.composed = temp * self.composed;
+                /*
                 self.composed = match t {
                     CoordinateTransform::Translate(v) => {
                         glm::translate(&self.composed, &glm::vec2_to_vec3(&-v))
@@ -78,6 +108,7 @@ impl CoordinateStack {
                         glm::rotate_z(&self.composed, -r)
                     },
                 };
+                */
                 self.on_changed(locs);
             },
             None => {
