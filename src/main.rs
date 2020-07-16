@@ -14,7 +14,9 @@ use glfw::{
     Key,
 };
 use image;
-// use nalgebra_glm as glm;
+
+use memoffset::offset_of;
+use nalgebra_glm as glm;
 
 //
 
@@ -36,7 +38,7 @@ fn main() {
     let mahou_tex = Texture::new(&mahou_img);
     let mahou_td = TextureData::diffuse(&mahou_tex);
 
-    let proj = ortho_screen(600, 400);
+    let m3_screen = ortho_screen(600, 400);
     let mut time: GLfloat = 0.;
 
     let draw = ShapeDrawer::new(50);
@@ -71,7 +73,7 @@ fn main() {
 
         sb_prog.bind();
         sb_locs.reset();
-        proj.uniform(sb_locs.projection());
+        m3_screen.uniform(sb_locs.screen());
         time.uniform(sb_locs.time());
 
         mahou_td.uniform(sb_locs.diffuse());

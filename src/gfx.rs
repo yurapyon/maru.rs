@@ -802,7 +802,7 @@ impl Mesh {
         let ebo = Buffer::from_slice(&vertices.indices, buffer_type);
 
         let base = VertexAttribute {
-            size: 3,
+            size: 2,
             ty: gl::FLOAT,
             normalized: false,
             stride: mem::size_of::<Vertex>(),
@@ -817,11 +817,6 @@ impl Mesh {
             .. base
         });
         vao.enable_attribute(1, VertexAttribute {
-            offset: offset_of!(Vertex, normal),
-            .. base
-        });
-        vao.enable_attribute(2, VertexAttribute {
-            size: 2,
             offset: offset_of!(Vertex, uv),
             .. base
         });
@@ -965,10 +960,10 @@ impl Uniform for GLuint {
     }
 }
 
-impl Uniform for glm::TVec4<GLfloat> {
+impl Uniform for glm::Vec4 {
     fn uniform(&self, loc: &Location) {
         unsafe {
-            let buf: &[GLfloat; 4] = self.as_ref();
+            let buf: &[f32; 4] = self.as_ref();
             gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
         }
     }
@@ -983,11 +978,11 @@ impl Uniform for Color {
     }
 }
 
-impl Uniform for glm::TMat4<GLfloat> {
+impl Uniform for glm::Mat3 {
     fn uniform(&self, loc: &Location) {
         unsafe {
-            let buf: &[GLfloat] = self.as_slice();
-            gl::UniformMatrix4fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
+            let buf: &[f32] = self.as_slice();
+            gl::UniformMatrix3fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
         }
     }
 }
@@ -1033,7 +1028,7 @@ impl Uniform for TextureData<'_> {
 //
 
 pub struct DefaultLocations {
-    projection: Location,
+    screen: Location,
     view: Location,
     model: Location,
     time: Location,
@@ -1046,7 +1041,7 @@ pub struct DefaultLocations {
 impl DefaultLocations {
     pub fn new(program: &Program) -> Self {
         Self {
-            projection: Location::new(program, "_projection"),
+            screen:     Location::new(program, "_screen"),
             view:       Location::new(program, "_view"),
             model:      Location::new(program, "_model"),
             time:       Location::new(program, "_time"),
@@ -1057,8 +1052,8 @@ impl DefaultLocations {
         }
     }
 
-    pub fn projection(&self) -> &Location {
-        &self.projection
+    pub fn screen(&self) -> &Location {
+        &self.screen
     }
 
     pub fn view(&self) -> &Location {
@@ -1091,10 +1086,10 @@ impl DefaultLocations {
 
     /// Note: does not set textures
     pub fn reset(&self) {
-        let m4_iden = glm::Mat4::identity();
-        self.projection().set(&m4_iden);
-        self.view().set(&m4_iden);
-        self.model().set(&m4_iden);
+        let m3_iden = glm::Mat3::identity();
+        self.screen().set(&m3_iden);
+        self.view().set(&m3_iden);
+        self.model().set(&m3_iden);
         self.base_color().set(&Color::white());
         self.flip_uvs().set(&false);
         self.time().set(&(0. as GLfloat));
@@ -1102,7 +1097,7 @@ impl DefaultLocations {
 
     pub fn set_sprite_px(&self, texture: &Texture, transform: &Transform2d) {
         self.diffuse().set(&TextureData::diffuse(texture));
-        self.model().set(&glm::Mat4::from(*transform));
+        self.model().set(&glm::Mat3::from(*transform));
     }
 
     pub fn set_sprite(&self, texture: &Texture, transform: &Transform2d) {
@@ -1211,6 +1206,7 @@ impl BitmapFont {
 
 //
 
+// TODO think about using mat3 instead of t2d
 #[derive(Debug)]
 #[repr(C)]
 pub struct SbSprite {

@@ -18,13 +18,13 @@ pub enum CoordinateTransform {
 /// Uses the view matrix of the locations.
 pub struct CoordinateStack {
     stk: Vec<CoordinateTransform>,
-    composed: glm::Mat4,
+    composed: glm::Mat3,
 }
 
 impl CoordinateStack {
     pub fn with_capacity(size: usize) -> Self {
         let stk = Vec::with_capacity(size);
-        let composed = glm::Mat4::identity();
+        let composed = glm::Mat3::identity();
         Self {
             stk,
             composed,
@@ -41,38 +41,23 @@ impl CoordinateStack {
 
     pub fn clear(&mut self, locs: &DefaultLocations) {
         self.stk.clear();
-        self.composed = glm::Mat4::identity();
+        self.composed = glm::Mat3::identity();
         self.on_changed(locs);
     }
 
     pub fn push(&mut self, t: CoordinateTransform, locs: &DefaultLocations) {
         let temp = match t {
             CoordinateTransform::Translate(v) => {
-                glm::translation(&glm::vec2_to_vec3(&v))
+                glm::translation2d(&v)
             },
             CoordinateTransform::Scale(v) => {
-                let scl = glm::vec3(v.x, v.y, 1.);
-                glm::scaling(&scl)
+                glm::scaling2d(&v)
             },
             CoordinateTransform::Rotate(r) => {
-                glm::rotation(r, &glm::vec3(0., 0., 1.))
+                glm::rotation2d(r)
             },
         };
         self.composed = temp * self.composed;
-        /*
-        self.composed = match t {
-            CoordinateTransform::Translate(v) => {
-                glm::translate(&self.composed, &glm::vec2_to_vec3(&v))
-            },
-            CoordinateTransform::Scale(v) => {
-                let scl = glm::vec3(v.x, v.y, 1.);
-                glm::scale(&self.composed, &scl)
-            },
-            CoordinateTransform::Rotate(r) => {
-                glm::rotate_z(&self.composed, r)
-            },
-        };
-        */
         self.on_changed(locs);
         self.stk.push(t);
     }
@@ -84,31 +69,16 @@ impl CoordinateStack {
 
                 let temp = match t {
                     CoordinateTransform::Translate(v) => {
-                        glm::translation(&glm::vec2_to_vec3(&-v))
+                        glm::translation2d(&-v)
                     },
                     CoordinateTransform::Scale(v) => {
-                        let scl = glm::vec3(v.x, v.y, 1.).map(f32::recip);
-                        glm::scaling(&scl)
+                        glm::scaling2d(&v.map(f32::recip))
                     },
                     CoordinateTransform::Rotate(r) => {
-                        glm::rotation(r, &glm::vec3(0., 0., -1.))
+                        glm::rotation2d(-r)
                     },
                 };
                 self.composed = temp * self.composed;
-                /*
-                self.composed = match t {
-                    CoordinateTransform::Translate(v) => {
-                        glm::translate(&self.composed, &glm::vec2_to_vec3(&-v))
-                    },
-                    CoordinateTransform::Scale(v) => {
-                        let scl = glm::vec3(v.x, v.y, 1.).map(f32::recip);
-                        glm::scale(&self.composed, &scl)
-                    },
-                    CoordinateTransform::Rotate(r) => {
-                        glm::rotate_z(&self.composed, -r)
-                    },
-                };
-                */
                 self.on_changed(locs);
             },
             None => {

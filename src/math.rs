@@ -159,16 +159,14 @@ impl<T: Number> AABB<T> {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
-    pub position: glm::Vec3,
-    pub normal: glm::Vec3,
+    pub position: glm::Vec2,
     pub uv: glm::Vec2,
 }
 
 impl Vertex {
     fn zero() -> Self {
         Self {
-            position: glm::vec3(0., 0., 0.),
-            normal: glm::vec3(0., 0., 0.),
+            position: glm::vec2(0., 0.),
             uv: glm::vec2(0., 0.),
         }
     }
@@ -184,27 +182,23 @@ impl Vertices {
         let mut vertices = Vec::with_capacity(4);
 
         vertices.push(Vertex {
-            position: glm::vec3(1., 1., 0.),
+            position: glm::vec2(1., 1.),
             uv:       glm::vec2(1., 1.),
-            .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: glm::vec3(1., 0., 0.),
+            position: glm::vec2(1., 0.),
             uv:       glm::vec2(1., 0.),
-            .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: glm::vec3(0., 1., 0.),
+            position: glm::vec2(0., 1.),
             uv:       glm::vec2(0., 1.),
-            .. Vertex::zero()
         });
 
         vertices.push(Vertex {
-            position: glm::vec3(0., 0., 0.),
+            position: glm::vec2(0., 0.),
             uv:       glm::vec2(0., 0.),
-            .. Vertex::zero()
         });
 
         if centered {
@@ -232,9 +226,8 @@ impl Vertices {
             let x = at.cos() / 2.;
             let y = at.sin() / 2.;
             vertices.push(Vertex {
-                position: glm::vec3(x, y, 0.),
+                position: glm::vec2(x, y),
                 uv:       glm::vec2(x + 0.5, y + 0.5),
-                .. Vertex::zero()
             });
         }
 
@@ -298,13 +291,18 @@ impl Transform2d {
 pub mod ext {
     use super::*;
 
-    pub fn ortho_screen(width: u32, height: u32) -> glm::Mat4 {
-        glm::ortho(0., width as f32, height as f32, 0., -1., 1.)
+    pub fn ortho_screen(width: u32, height: u32) -> glm::Mat3 {
+        let mut ret = glm::Mat3::identity();
+        ret[(0, 0)] =  2. / width as f32;
+        ret[(1, 1)] = -2. / height as f32;
+        ret[(0, 2)] = -1.;
+        ret[(1, 2)] =  1.;
+        ret
     }
 
     //
 
-    impl From<Transform2d> for glm::Mat4 {
+    impl From<Transform2d> for glm::Mat3 {
         fn from(t2d: Transform2d) -> Self {
             let mut ret = Self::identity();
             let sx = t2d.scale.x;
@@ -312,11 +310,11 @@ pub mod ext {
             let rc = t2d.rotation.cos();
             let rs = t2d.rotation.sin();
             ret[(0, 0)] =  rc * sx;
-            ret[(0, 1)] =  rs * sx;
-            ret[(1, 0)] = -rs * sy;
+            ret[(1, 0)] =  rs * sx;
+            ret[(0, 1)] = -rs * sy;
             ret[(1, 1)] =  rc * sy;
-            ret[(3, 0)] = t2d.position.x;
-            ret[(3, 1)] = t2d.position.y;
+            ret[(0, 2)] = t2d.position.x;
+            ret[(1, 2)] = t2d.position.y;
             ret
         }
     }

@@ -3,7 +3,6 @@
 // basic
 in vec2 _uv_coord;
 in float _tm;
-in vec3 _normal;
 
 uniform sampler2D _tx_diffuse;
 uniform sampler2D _tx_normal;

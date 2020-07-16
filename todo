@@ -4,28 +4,3 @@ Pool<T>
 particles
 
 content not public module
-
-think about getting rid of 3d functionality
-  what is the point of maru?
-    quickly get up and running?
-    useful thing for finished projects?
-    started as video library so: special effects
-    love2d
-      useful for finished projects also quick to start
-      out of the way
-    maru
-      expose opengl
-      integrate w open gl easily
-      thin wrappers
-  good
-    clean things up
-      simplify shaders
-      lessmemory usage and probably faster (probably a non-issue)
-    use mat3s instead of mat4s and converting to mat4s everywhere
-    3d is specific and pretty difficult
-      supporting 3d and doing it well would be a real undertaking
-  bad
-    restricting
-      hard to work around for things that you do want to be in 3d
-      meshes are tied to default shader
-        meshes should be made more modular anyway
