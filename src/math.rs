@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+// #![allow(dead_code)]
 
 use std::{
     mem,
@@ -53,11 +53,6 @@ where
        + Bounded
 {
 }
-
-//
-
-// note: GLfloats are always going to be f32
-// https://www.khronos.org/opengl/wiki/OpenGL_Type
 
 //
 
@@ -163,15 +158,6 @@ pub struct Vertex {
     pub uv: glm::Vec2,
 }
 
-impl Vertex {
-    fn zero() -> Self {
-        Self {
-            position: glm::vec2(0., 0.),
-            uv: glm::vec2(0., 0.),
-        }
-    }
-}
-
 pub struct Vertices {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
@@ -239,7 +225,6 @@ impl Vertices {
 }
 
 // TODO eq derives
-//      rename default to identity
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Transform2d {
@@ -264,26 +249,6 @@ impl Transform2d {
             rotation: 0.,
         }
     }
-
-    /*
-    pub fn translate(&mut self, x: f32, y: f32) {
-        self.position.x += x;
-        self.position.y += y;
-    }
-
-    pub fn scale_from_origin(&mut self, sx: f32, sy: f32) {
-        self.position.x *= sx;
-        self.position.y *= sy;
-        self.scale.x *= sx;
-        self.scale.y *= sy;
-    }
-
-    pub fn rotate_from_origin(&mut self, r: f32) {
-        // self.position.x += x;
-        // self.position.y += y;
-        self.rotation += Rad(r);
-    }
-    */
 }
 
 //
@@ -291,10 +256,10 @@ impl Transform2d {
 pub mod ext {
     use super::*;
 
-    pub fn ortho_screen(width: u32, height: u32) -> glm::Mat3 {
+    pub fn ortho_screen(dimensions: glm::U32Vec2) -> glm::Mat3 {
         let mut ret = glm::Mat3::identity();
-        ret[(0, 0)] =  2. / width as f32;
-        ret[(1, 1)] = -2. / height as f32;
+        ret[(0, 0)] =  2. / dimensions.x as f32;
+        ret[(1, 1)] = -2. / dimensions.y as f32;
         ret[(0, 2)] = -1.;
         ret[(1, 2)] =  1.;
         ret

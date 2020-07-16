@@ -3,11 +3,11 @@
 layout (location = 0) in vec2 _ext_vertex;
 layout (location = 1) in vec2 _ext_uv;
 
-layout (location = 3) in vec4  _ext_sb_uv;
-layout (location = 4) in vec2  _ext_sb_position;
-layout (location = 5) in vec2  _ext_sb_scale;
-layout (location = 6) in float _ext_sb_rotation;
-layout (location = 7) in vec4  _ext_sb_color;
+layout (location = 2) in vec4  _ext_sb_uv;
+layout (location = 3) in vec2  _ext_sb_position;
+layout (location = 4) in vec2  _ext_sb_scale;
+layout (location = 5) in float _ext_sb_rotation;
+layout (location = 6) in vec4  _ext_sb_color;
 
 // basic
 uniform mat3 _screen;
@@ -39,27 +39,13 @@ mat3 mat3_from_transform2d(float x, float y, float sx, float sy, float r) {
 }
 
 void ready_spritebatch() {
-    // TODO flip uvs
-    // multiply sb uv by the uv from mesh
-    //   normal mesh uvs can still be used with sb
-
-    // generate actual uv point for each vertex
-    //   based on input rect
-    // _ext_sb_uv => vec4(x1 y1 x2 y2)
-    switch (gl_VertexID) {
-    case 0:
-        _sb_uv = _ext_sb_uv.zw;
-        break;
-    case 1:
-        _sb_uv = _ext_sb_uv.zy;
-        break;
-    case 2:
-        _sb_uv = _ext_sb_uv.xw;
-        break;
-    case 3:
-        _sb_uv = _ext_sb_uv.xy;
-        break;
-    }
+    // scale main uv coords by sb_uv
+    //   automatically handles flip uvs
+    //   as long as this is called after flipping the uvs in main (it is)
+    float uv_w = _ext_sb_uv.z - _ext_sb_uv.x;
+    float uv_h = _ext_sb_uv.w - _ext_sb_uv.y;
+    _sb_uv.x = _uv_coord.x * uv_w + _ext_sb_uv.x;
+    _sb_uv.y = _uv_coord.y * uv_h + _ext_sb_uv.y;
 
     _sb_color = _ext_sb_color;
     _sb_model = mat3_from_transform2d(_ext_sb_position.x,
@@ -72,19 +58,13 @@ void ready_spritebatch() {
 @
 
 vec3 effect() {
-  // return _projection * _view * _model * vec4(_ext_vertex, 0.0, 1.0);
-  mat3 proj = mat3(1.0);
-  proj[0][0] = 1./300.;
-  proj[1][1] = 1./200.;
-  proj[2][0] = -1;
-  proj[2][1] = -1;
-  return proj * vec3(_ext_vertex, 1.0);
+    return _screen * _view * _model * vec3(_ext_vertex, 1.0);
 }
 
 @
 
 void main() {
-  _uv_coord = _flip_uvs != 0 ? vec2(_ext_uv.x, 1 - _ext_uv.y) : _ext_uv;
-  _tm = _time;
-  gl_Position = vec4(effect(), 1.0);
+    _uv_coord = _flip_uvs != 0 ? vec2(_ext_uv.x, 1 - _ext_uv.y) : _ext_uv;
+    _tm = _time;
+    gl_Position = vec4(effect(), 1.0);
 }

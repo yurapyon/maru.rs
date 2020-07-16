@@ -2,7 +2,7 @@
 //!
 //! graphics module
 
-#![allow(dead_code)]
+// #![allow(dead_code)]
 
 use std::{
     ffi::CString,
@@ -22,6 +22,9 @@ use image::{
 };
 use memoffset::offset_of;
 use nalgebra_glm as glm;
+use num_traits::{
+    ToPrimitive,
+};
 
 //
 
@@ -33,7 +36,12 @@ use crate::math::{
     Vertices,
 };
 
-// TODO dont use gltypes for anything
+//
+
+// note: GL types are only used for things that interface directly with ogl
+//         such as object handles and enums
+//       otherwise just use native types base off of:
+//         https://www.khronos.org/opengl/wiki/OpenGL_Type
 
 //
 
@@ -60,7 +68,7 @@ use crate::math::{
 //   incerements glfw ref count
 //   might not be guaranteed behavior by glfw lib,
 //   but i could still do it on my own w/ an Rc<>
-// only creat objects through glfw context to manage lifetimes
+// only create objects through glfw context to manage lifetimes
 
 //
 
@@ -71,6 +79,11 @@ pub enum GfxError {
 }
 
 //
+
+// TODO
+// shader tamplates not super necessary
+//   were a way to save strings you loaded from file,
+//   but because of rust, shaders are all just in memory
 
 /// Holds information about maru's default shader format.
 ///
@@ -150,8 +163,8 @@ pub struct Shader {
 
 impl Shader {
     // TODO report errors better
-    //      also report warnings somehow?
-    // does it really need to take an array of strs?
+    //        also report warnings somehow?
+    //      does it really need to take an array of strs?
     /// Creates a new shader from strings.
     pub fn new(ty: GLenum, strings: &[&str]) -> Result<Self, GfxError> {
         let c_strs: Vec<_> = strings.iter()
@@ -280,6 +293,10 @@ impl Program {
     }
 
     // TODO dont allow return errors ?
+    //        would prefer this thing could actually take effects? or something
+    //        ik its not a big deal to reimplement shader logic per user shader idk
+    //        maybe just get rid of this?
+    //        weird
     /// Creates a default maru spritebatch program.
     /// Effects cannot be suppiled as with `Program::new_default()`.
     pub fn new_default_spritebatch() -> Result<Self, GfxError> {
@@ -324,12 +341,11 @@ impl Drop for Program {
 
 // TODO
 //   buffer data
-//   switch width and height to usizes? or u32?
 /// Simple wrapper around an OpenGL texture.
 pub struct Texture {
     texture: GLuint,
-    width: GLint,
-    height: GLint,
+    width: u32,
+    height: u32,
 }
 
 impl Texture {
@@ -364,8 +380,8 @@ impl Texture {
 
             let mut ret = Self {
                 texture,
-                width: image.width() as GLint,
-                height: image.height() as GLint,
+                width: image.width(),
+                height: image.height(),
             };
 
             ret.set_wrap(gl::REPEAT, gl::REPEAT);
@@ -405,7 +421,7 @@ impl Texture {
         }
     }
 
-    fn _get_dimensions(texture: GLuint, level: GLint) -> (GLint, GLint) {
+    fn _get_dimensions(texture: GLuint, level: GLint) -> (u32, u32) {
         unsafe {
             let mut width = 0;
             let mut height = 0;
@@ -413,16 +429,20 @@ impl Texture {
             gl::GetTexLevelParameteriv(gl::TEXTURE_2D, level, gl::TEXTURE_WIDTH, &mut width);
             gl::GetTexLevelParameteriv(gl::TEXTURE_2D, level, gl::TEXTURE_HEIGHT, &mut height);
             gl::BindTexture(gl::TEXTURE_2D, 0);
-            (width, height)
+            (width as u32, height as u32)
         }
     }
 
-    pub fn width(&self) -> GLint {
+    pub fn width(&self) -> u32 {
         self.width
     }
 
-    pub fn height(&self) -> GLint {
+    pub fn height(&self) -> u32 {
         self.height
+    }
+
+    pub fn dimensions(&self) -> glm::U32Vec2 {
+        glm::vec2(self.width, self.height)
     }
 
     pub fn gl(&self) -> GLuint {
@@ -791,7 +811,7 @@ pub struct Mesh {
     vao: VertexArray,
     vbo: Buffer<Vertex>,
     ebo: Buffer<GLuint>,
-    buffer_type: GLenum,
+    _buffer_type: GLenum,
     draw_type: GLenum,
 }
 
@@ -828,7 +848,7 @@ impl Mesh {
             vao,
             vbo,
             ebo,
-            buffer_type,
+            _buffer_type: buffer_type,
             draw_type,
         }
     }
@@ -928,7 +948,7 @@ pub trait Uniform {
     fn uniform(&self, loc: &Location);
 }
 
-impl Uniform for GLfloat {
+impl Uniform for f32 {
     fn uniform(&self, loc: &Location) {
         unsafe {
             gl::Uniform1f(loc.location(), *self);
@@ -944,7 +964,7 @@ impl Uniform for bool {
     }
 }
 
-impl Uniform for GLint {
+impl Uniform for i32 {
     fn uniform(&self, loc: &Location) {
         unsafe {
             gl::Uniform1i(loc.location(), *self);
@@ -952,7 +972,7 @@ impl Uniform for GLint {
     }
 }
 
-impl Uniform for GLuint {
+impl Uniform for u32 {
     fn uniform(&self, loc: &Location) {
         unsafe {
             gl::Uniform1ui(loc.location(), *self);
@@ -1092,7 +1112,7 @@ impl DefaultLocations {
         self.model().set(&m3_iden);
         self.base_color().set(&Color::white());
         self.flip_uvs().set(&false);
-        self.time().set(&(0. as GLfloat));
+        self.time().set(&0.);
     }
 
     pub fn set_sprite_px(&self, texture: &Texture, transform: &Transform2d) {
@@ -1102,8 +1122,8 @@ impl DefaultLocations {
 
     pub fn set_sprite(&self, texture: &Texture, transform: &Transform2d) {
         let temp = Transform2d {
-            scale: glm::vec2(transform.scale.x * texture.width() as GLfloat,
-                             transform.scale.y * texture.height() as GLfloat),
+            scale: transform.scale.component_mul(&texture.dimensions()
+                                                         .map(| x | x.to_f32().unwrap())),
             .. *transform
         };
         self.set_sprite_px(texture, &temp);
@@ -1113,23 +1133,19 @@ impl DefaultLocations {
 //
 
 pub type TextureRegion = AABB<u32>;
-pub type UvRegion = AABB<GLfloat>;
+pub type UvRegion = AABB<f32>;
 
 // TODO use bdf_font
-
-// just use ascii for now
-// maybe in the future use utf8
-//   but the lookup table would have to be different
-//   idk
-//     some type of convert string to vec<&textureRegion>
-// TODO
-//   inlucde medium sized font and large fon
-//     new_default_small
-//     new_default_medium
-//     new_default_large
-//     just take dont size as an enum
-//       new_default(FontSize::Small) etc
-//   make font with default alphabet
+//        lookup table
+//        glyph strings
+//          for sb.print
+//      include medium sized font and large font
+//        new_default_small
+//        new_default_medium
+//        new_default_large
+//        just take font size as an enum
+//          new_default(FontSize::Small) etc
+//      make font with default alphabet
 pub struct BitmapFont {
     texture: Texture,
     regions: Vec<TextureRegion>,
@@ -1258,29 +1274,29 @@ impl Spritebatch {
         // TODO use enum for all the attrib locs
         vao.bind();
         ibo.bind_to(gl::ARRAY_BUFFER);
-        vao.enable_attribute(3, VertexAttribute {
+        vao.enable_attribute(2, VertexAttribute {
             offset: offset_of!(SbSprite, uv),
             .. base
         });
-        vao.enable_attribute(4, VertexAttribute {
+        vao.enable_attribute(3, VertexAttribute {
             size: 2,
             offset: offset_of!(SbSprite, transform) +
                     offset_of!(Transform2d, position),
             .. base
         });
-        vao.enable_attribute(5, VertexAttribute {
+        vao.enable_attribute(4, VertexAttribute {
             size: 2,
             offset: offset_of!(SbSprite, transform) +
                     offset_of!(Transform2d, scale),
             .. base
         });
-        vao.enable_attribute(6, VertexAttribute {
+        vao.enable_attribute(5, VertexAttribute {
             size: 1,
             offset: offset_of!(SbSprite, transform) +
                     offset_of!(Transform2d, rotation),
             .. base
         });
-        vao.enable_attribute(7, VertexAttribute {
+        vao.enable_attribute(6, VertexAttribute {
             offset: offset_of!(SbSprite, color),
             .. base
         });
@@ -1320,22 +1336,18 @@ impl Spritebatch {
     }
 
     pub fn pull_default(&mut self) -> &mut SbSprite {
-        if self.buffer.empty_count() == 0 {
-            self.draw();
-        }
-        let ret = self.buffer.pull().unwrap();
+        let ret = self.pull();
         *ret = Default::default();
         ret
     }
 
-    // TODO glyph strings, print glyph strings
     pub fn print(&mut self, font: &BitmapFont, text: &str) {
         self.begin();
 
         let mut x = 0.;
-        let font_h = font.texture().height() as GLfloat;
+        let font_h = font.texture().height() as f32;
         for ch in text.chars() {
-            let region_w = font.region(ch).width() as GLfloat;
+            let region_w = font.region(ch).width() as f32;
             let sp = self.pull_default();
             sp.uv = font.uv_region(ch);
             sp.transform.position.x = x;
@@ -1350,39 +1362,23 @@ impl Spritebatch {
 
 //
 
-// TODO where to put something like a coordinate system
-//      put it in the default shader?
-//        use view matrix
-//      2d coordinate system
-//        last after projection
-//      put it in drawer?
-//        wont work for anything else
-// usage of the drawer feels alittle weird, between too high level and too lowlevel
-
-// this is just a bunch of functions that generate uniforms on the fly
-//   and applies them to current program
-// also has meshes and textures
-
 // polygon
 // line
 // triangle
 
 // lined rect
 
-// turn this into just a ShapeDrawer
 pub struct ShapeDrawer {
-    line_thickness: GLfloat,
+    line_thickness: f32,
 
     mesh_quad: Mesh,
     mesh_circle: Mesh,
     tex_white: Texture,
-    tex_blue: Texture,
 }
 
 impl ShapeDrawer {
     pub fn new(circle_resolution: usize) -> Self {
         let white = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
-        let blue = RgbaImage::from_pixel(1, 1, Rgba::from([0, 0, 255, 0]));
         Self {
             mesh_quad: Mesh::new(Vertices::quad(false),
                                  gl::STATIC_DRAW,
@@ -1391,17 +1387,16 @@ impl ShapeDrawer {
                                    gl::STATIC_DRAW,
                                    gl::TRIANGLE_FAN),
             tex_white: Texture::new(&white),
-            tex_blue: Texture::new(&blue),
             line_thickness: 2.0,
         }
     }
 
-    pub fn line_thickness_mut(&mut self) -> &mut GLfloat {
+    pub fn line_thickness_mut(&mut self) -> &mut f32 {
         &mut self.line_thickness
     }
 
     /// Sets locations.diffuse() and locations.model()
-    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<GLfloat>) {
+    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<f32>) {
         let temp = Transform2d {
             position: rect.corner1,
             scale:    glm::vec2(rect.width(), rect.height()),
@@ -1412,7 +1407,7 @@ impl ShapeDrawer {
     }
 
     /// Sets locations.diffuse() and locations.model()
-    pub fn circle(&self, locations: &DefaultLocations, x: GLfloat, y: GLfloat, r: GLfloat) {
+    pub fn circle(&self, locations: &DefaultLocations, x: f32, y: f32, r: f32) {
         let temp = Transform2d {
             position: glm::vec2(x, y),
             scale:    glm::vec2(r, r),
@@ -1423,21 +1418,21 @@ impl ShapeDrawer {
     }
 
     /// Sets locations.diffuse() and locations.model()
-    pub fn horizontal_line(&self, locations: &DefaultLocations, y: GLfloat, x1: GLfloat, x2: GLfloat) {
+    pub fn horizontal_line(&self, locations: &DefaultLocations, y: f32, x1: f32, x2: f32) {
         let y1 = y - self.line_thickness / 2.;
         let y2 = y + self.line_thickness / 2.;
         self.filled_rectangle(locations, AABB::new(x1, y1, x2, y2));
     }
 
     /// Sets locations.diffuse() and locations.model()
-    pub fn vertical_line(&self, locations: &DefaultLocations, x: GLfloat, y1: GLfloat, y2: GLfloat) {
+    pub fn vertical_line(&self, locations: &DefaultLocations, x: f32, y1: f32, y2: f32) {
         let x1 = x - self.line_thickness / 2.;
         let x2 = x + self.line_thickness / 2.;
         self.filled_rectangle(locations, AABB::new(x1, y1, x2, y2));
     }
 
     /// Sets locations.diffuse() and locations.model()
-    pub fn line(&self, locations: &DefaultLocations, x1: GLfloat, y1: GLfloat, x2: GLfloat, y2: GLfloat) {
+    pub fn line(&self, locations: &DefaultLocations, x1: f32, y1: f32, x2: f32, y2: f32) {
         if x1 == x2 {
             self.vertical_line(locations, x1, y1, y2);
         } else if y1 == y2 {

@@ -6,8 +6,11 @@ use crate::{
     },
 };
 
-// TODO could generalize this to 3d
-// or not
+// TODO shear
+//      take transform2d (if still going to use it)
+//        just turn into coordTransforms and push them
+//      take entire mat3s?
+
 pub enum CoordinateTransform {
     Translate(glm::Vec2),
     Scale(glm::Vec2),

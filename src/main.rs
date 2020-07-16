@@ -5,7 +5,6 @@ use std::{
 
 use gl::{
     self,
-    types::*,
 };
 use glfw::{
     self,
@@ -14,8 +13,6 @@ use glfw::{
     Key,
 };
 use image;
-
-use memoffset::offset_of;
 use nalgebra_glm as glm;
 
 //
@@ -38,10 +35,10 @@ fn main() {
     let mahou_tex = Texture::new(&mahou_img);
     let mahou_td = TextureData::diffuse(&mahou_tex);
 
-    let m3_screen = ortho_screen(600, 400);
-    let mut time: GLfloat = 0.;
+    let m3_screen = ortho_screen(glm::vec2(600, 400));
+    let mut time = 0.;
 
-    let draw = ShapeDrawer::new(50);
+    // let draw = ShapeDrawer::new(50);
 
     let mut sb = Spritebatch::new(50);
     let sb_prog = Program::new_default_spritebatch().unwrap();

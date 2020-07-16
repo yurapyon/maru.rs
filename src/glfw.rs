@@ -14,6 +14,7 @@ use glfw::{
 
 // TODO start fullscreen or not
 //      handle resize, will be an event
+//      get window dimensions as u32vec2
 
 pub struct GlfwContextSettings {
     pub ogl_version_major: u32,
@@ -60,7 +61,7 @@ impl GlfwContext {
         glfw.window_hint(glfw::WindowHint::Resizable(settings.is_resizable));
 
         // TODO handle error
-        // returns option?
+        //        returns option?
         let (mut window, events) = glfw.create_window(settings.window_width,
                                                       settings.window_height,
                                                       &settings.window_name,
