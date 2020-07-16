@@ -40,7 +40,7 @@ fn main() {
 
     // let draw = ShapeDrawer::new(50);
 
-    let mut sb = Spritebatch::new(50);
+    let mut sb = Spritebatch::with_size(50);
     let sb_prog = Program::new_default_spritebatch().unwrap();
     let sb_locs = DefaultLocations::new(&sb_prog);
 
@@ -66,6 +66,7 @@ fn main() {
 
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Disable(gl::DEPTH_TEST);
         }
 
         sb_prog.bind();

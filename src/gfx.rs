@@ -40,7 +40,7 @@ use crate::math::{
 
 // note: GL types are only used for things that interface directly with ogl
 //         such as object handles and enums
-//       otherwise just use native types base off of:
+//       otherwise just use native types based off of:
 //         https://www.khronos.org/opengl/wiki/OpenGL_Type
 
 //
@@ -69,6 +69,20 @@ use crate::math::{
 //   might not be guaranteed behavior by glfw lib,
 //   but i could still do it on my own w/ an Rc<>
 // only create objects through glfw context to manage lifetimes
+
+// find a way to move as much as possible into a default module
+// shaders and stuff too
+//  can have a maru::default::2d type thing
+//  can have a maru::default::2d::prelude::* to get going quickly
+
+// stuff for modifying underlying vec and making changes to the buf
+//   maybe not super necessary if mapping buffers
+/*
+pub struct Backed<T: GLBuffer<O>> {
+    buf: T,
+    vec: Vec<O>,
+}
+*/
 
 //
 
@@ -339,6 +353,135 @@ impl Drop for Program {
 
 //
 
+// note: sometimes location will be -1
+//       if location can not be found
+//       just ignore it gracefully
+//         or have separate 'new' function that reports error
+pub struct Location {
+    location: GLint
+}
+
+impl Location {
+    pub fn new(program: &Program, name: &str) -> Self {
+        unsafe {
+            let c_str = CString::new(name.as_bytes()).unwrap();
+            let location = gl::GetUniformLocation(program.gl(), c_str.as_ptr() as _);
+            Self {
+                location,
+            }
+        }
+    }
+
+    pub fn location(&self) -> GLint {
+        self.location
+    }
+
+    pub fn set<T: Uniform>(&self, val: &T) {
+        val.uniform(self);
+    }
+}
+
+//
+
+pub trait Uniform {
+    fn uniform(&self, loc: &Location);
+}
+
+impl Uniform for f32 {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1f(loc.location(), *self);
+        }
+    }
+}
+
+impl Uniform for bool {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1i(loc.location(), if *self { 1 } else { 0 });
+        }
+    }
+}
+
+impl Uniform for i32 {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1i(loc.location(), *self);
+        }
+    }
+}
+
+impl Uniform for u32 {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            gl::Uniform1ui(loc.location(), *self);
+        }
+    }
+}
+
+impl Uniform for glm::Vec4 {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            let buf: &[f32; 4] = self.as_ref();
+            gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
+        }
+    }
+}
+
+impl Uniform for Color {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            let buf: &[GLfloat; 4] = self.as_ref();
+            gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
+        }
+    }
+}
+
+impl Uniform for glm::Mat3 {
+    fn uniform(&self, loc: &Location) {
+        unsafe {
+            let buf: &[f32] = self.as_slice();
+            gl::UniformMatrix3fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
+        }
+    }
+}
+
+pub struct TextureData<'a> {
+    pub select: GLenum,
+    pub bind_to: GLenum,
+    pub texture: &'a Texture,
+}
+
+impl<'a> TextureData<'a> {
+    pub fn diffuse(texture: &'a Texture) -> Self {
+        Self {
+            select: gl::TEXTURE0,
+            bind_to: gl::TEXTURE_2D,
+            texture,
+        }
+    }
+
+    pub fn normal(texture: &'a Texture) -> Self {
+        Self {
+            select: gl::TEXTURE1,
+            bind_to: gl::TEXTURE_2D,
+            texture,
+        }
+    }
+}
+
+impl Uniform for TextureData<'_> {
+    fn uniform(&self, loc: &Location) {
+        (self.select - gl::TEXTURE0).uniform(loc);
+        unsafe {
+            gl::ActiveTexture(self.select);
+            gl::BindTexture(self.bind_to, self.texture.gl());
+        }
+    }
+}
+
+//
+
 // TODO
 //   buffer data
 /// Simple wrapper around an OpenGL texture.
@@ -593,6 +736,7 @@ pub struct VertexAttribute {
     pub divisor: GLuint,
 }
 
+// TODO push attributes?
 /// Simple wrapper around an OpenGL vertex array.
 pub struct VertexArray {
     vao: GLuint,
@@ -661,6 +805,12 @@ impl Drop for VertexArray {
     }
 }
 
+pub trait VaoTarget {
+    /// A `Buffer<Self>` will be bound to `gl::ARRAY_BUFFER`.
+    /// Use this function to set VertexAttributes in the vao.
+    fn set_attributes(vao: &mut VertexArray);
+}
+
 //
 
 /// Useful for instancing and batching.
@@ -727,6 +877,70 @@ impl<T> InstanceBuffer<T> {
 
     fn ibo(&self) -> &Buffer<T> {
         &self.ibo
+    }
+}
+
+// TODO some way to reset or change the mesh
+//        use a reference?
+//        call begin with a &mesh
+//        idk
+/// Instancer that automatically does draw calls when full.
+pub struct Instancer<T: VaoTarget, M: VaoTarget> {
+    buffer: InstanceBuffer<T>,
+    mesh: Mesh<M>,
+}
+
+impl<T: VaoTarget, M: VaoTarget> Instancer<T, M> {
+    pub fn new(size: usize, mesh: Mesh<M>) -> Self {
+        assert!(size != 0);
+
+        let buffer = InstanceBuffer::new(size);
+        let ibo = buffer.ibo();
+
+        let mut mesh = mesh;
+        let vao = mesh.vao_mut();
+
+        vao.bind();
+        ibo.bind_to(gl::ARRAY_BUFFER);
+        T::set_attributes(vao);
+        vao.unbind();
+
+        Self {
+            buffer,
+            mesh,
+        }
+    }
+
+    pub fn begin(&mut self) {
+        self.buffer.clear();
+    }
+
+    pub fn draw(&mut self) {
+        self.buffer.buffer_data();
+        self.mesh.draw_instanced(self.buffer.fill_count());
+        self.buffer.clear();
+    }
+
+    pub fn end(&mut self) {
+        if self.buffer.fill_count() > 0 {
+            self.draw();
+        }
+    }
+
+    /// Returns an T for the caller to override. Will be uninitialized.
+    pub fn pull(&mut self) -> &mut T {
+        if self.buffer.empty_count() == 0 {
+            self.draw();
+        }
+        self.buffer.pull().unwrap()
+    }
+}
+
+impl<T: VaoTarget + Default, M: VaoTarget> Instancer<T, M> {
+    pub fn pull_default(&mut self) -> &mut T {
+        let ret = self.pull();
+        *ret = Default::default();
+        ret
     }
 }
 
@@ -806,45 +1020,31 @@ impl Drop for Canvas {
 
 //
 
-pub struct Mesh {
-    vertices: Vertices,
+pub struct Mesh<T: VaoTarget> {
     vao: VertexArray,
-    vbo: Buffer<Vertex>,
-    ebo: Buffer<GLuint>,
+    vertices: Vec<T>,
+    vbo: Buffer<T>,
+    indices: Vec<u32>,
+    ebo: Buffer<u32>,
     _buffer_type: GLenum,
     draw_type: GLenum,
 }
 
-impl Mesh {
-    pub fn new(vertices: Vertices, buffer_type: GLenum, draw_type: GLenum) -> Self {
+impl<T: VaoTarget> Mesh<T> {
+    pub fn new(vertices: Vec<T>, indices: Vec<u32>, buffer_type: GLenum, draw_type: GLenum) -> Self {
         let mut vao = VertexArray::new();
-        let vbo = Buffer::from_slice(&vertices.vertices, buffer_type);
-        let ebo = Buffer::from_slice(&vertices.indices, buffer_type);
-
-        let base = VertexAttribute {
-            size: 2,
-            ty: gl::FLOAT,
-            normalized: false,
-            stride: mem::size_of::<Vertex>(),
-            offset: offset_of!(Vertex, position),
-            divisor: 0,
-        };
+        let vbo = Buffer::from_slice(&vertices, buffer_type);
+        let ebo = Buffer::from_slice(&indices, buffer_type);
 
         vao.bind();
         vbo.bind_to(gl::ARRAY_BUFFER);
-        vao.enable_attribute(0, VertexAttribute {
-            offset: offset_of!(Vertex, position),
-            .. base
-        });
-        vao.enable_attribute(1, VertexAttribute {
-            offset: offset_of!(Vertex, uv),
-            .. base
-        });
+        T::set_attributes(&mut vao);
         ebo.bind_to(gl::ELEMENT_ARRAY_BUFFER);
         vao.unbind();
 
         Self {
             vertices,
+            indices,
             vao,
             vbo,
             ebo,
@@ -854,57 +1054,58 @@ impl Mesh {
     }
 
     pub fn draw(&self) {
-        let i_ct = self.vertices.indices.len();
+        let i_ct = self.indices.len();
 
         self.vao.bind();
         if i_ct == 0 {
             unsafe {
                 gl::DrawArrays(self.draw_type,
-                    0,
-                    self.vertices.vertices.len() as GLint);
+                               0,
+                               self.vertices.len() as GLint);
             }
         } else {
             unsafe {
                 gl::DrawElements(self.draw_type,
-                    i_ct as GLint,
-                    gl::UNSIGNED_INT,
-                    ptr::null());
+                                 i_ct as GLint,
+                                 gl::UNSIGNED_INT,
+                                 ptr::null());
             }
         }
         self.vao.unbind();
     }
 
     pub fn draw_instanced(&self, n: usize) {
-        let i_ct = self.vertices.indices.len();
+        let i_ct = self.indices.len();
 
         self.vao.bind();
         if i_ct == 0 {
             unsafe {
                 gl::DrawArraysInstanced(self.draw_type,
-                    0,
-                    self.vertices.vertices.len() as GLint,
-                    n as GLint);
+                                        0,
+                                        self.vertices.len() as GLint,
+                                        n as GLint);
             }
         } else {
             unsafe {
                 gl::DrawElementsInstanced(self.draw_type,
-                    i_ct as GLint,
-                    gl::UNSIGNED_INT,
-                    ptr::null(),
-                    n as GLint);
+                                          i_ct as GLint,
+                                          gl::UNSIGNED_INT,
+                                          ptr::null(),
+                                          n as GLint);
             }
         }
         self.vao.unbind();
     }
 
     pub fn buffer_data(&mut self) {
-        self.vbo.buffer_data(&self.vertices.vertices);
-        self.ebo.buffer_data(&self.vertices.indices);
+        self.vbo.buffer_data(&self.vertices);
+        self.ebo.buffer_data(&self.indices);
     }
 
-    pub fn vertices_mut(&mut self) -> &mut Vertices {
-        &mut self.vertices
-    }
+    // TODO
+    // pub fn vertices_mut(&mut self) -> &mut Vertices {
+        // &mut self.vertices
+    // }
 
     /// Just be careful
     pub fn vao_mut(&mut self) -> &mut VertexArray {
@@ -914,136 +1115,193 @@ impl Mesh {
 
 //
 
-// note: sometimes location will be -1
-//       if location can not be found
-//       just ignore it gracefully
-//         or have separate 'new' function that reports error
-pub struct Location {
-    location: GLint
+// TODO everything above here is gl stuff and could maybe be put in its own module
+// after this its all stuff that hs to do with 2d,
+//   besides some of the default program/shader constructors
+
+//
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct Vertex2d {
+    pub position: glm::Vec2,
+    pub uv: glm::Vec2,
 }
 
-impl Location {
-    pub fn new(program: &Program, name: &str) -> Self {
-        unsafe {
-            let c_str = CString::new(name.as_bytes()).unwrap();
-            let location = gl::GetUniformLocation(program.gl(), c_str.as_ptr() as _);
-            Self {
-                location,
+impl Vertex2d {
+    pub fn quad(centered: bool) -> Vec<Self> {
+        let mut ret = Vec::with_capacity(4);
+
+        ret.push(Self {
+            position: glm::vec2(1., 1.),
+            uv:       glm::vec2(1., 1.),
+        });
+
+        ret.push(Self {
+            position: glm::vec2(1., 0.),
+            uv:       glm::vec2(1., 0.),
+        });
+
+        ret.push(Self {
+            position: glm::vec2(0., 1.),
+            uv:       glm::vec2(0., 1.),
+        });
+
+        ret.push(Self {
+            position: glm::vec2(0., 0.),
+            uv:       glm::vec2(0., 0.),
+        });
+
+        if centered {
+            for vert in ret.iter_mut() {
+                vert.position.x -= 0.5;
+                vert.position.y -= 0.5;
             }
         }
+
+        ret
     }
 
-    pub fn location(&self) -> GLint {
-        self.location
-    }
+    pub fn circle(resolution: usize) -> Vec<Self> {
+        use std::f32::consts;
 
-    pub fn set<T: Uniform>(&self, val: &T) {
-        val.uniform(self);
+        let mut ret = Vec::new();
+
+        let angle_step = (consts::PI * 2.) / (resolution as f32);
+
+        for i in 0..resolution {
+            let at = (i as f32) * angle_step;
+            let x = at.cos() / 2.;
+            let y = at.sin() / 2.;
+            ret.push(Self {
+                position: glm::vec2(x, y),
+                uv:       glm::vec2(x + 0.5, y + 0.5),
+            });
+        }
+
+        ret
     }
 }
+
+impl VaoTarget for Vertex2d {
+    fn set_attributes(vao: &mut VertexArray) {
+        let base = VertexAttribute {
+            size: 2,
+            ty: gl::FLOAT,
+            normalized: false,
+            stride: mem::size_of::<Self>(),
+            offset: offset_of!(Self, position),
+            divisor: 0,
+        };
+
+        // TODO enum, move these out of here?
+        vao.enable_attribute(0, VertexAttribute {
+            offset: offset_of!(Self, position),
+            .. base
+        });
+        vao.enable_attribute(1, VertexAttribute {
+            offset: offset_of!(Self, uv),
+            .. base
+        });
+    }
+}
+
+pub type Mesh2d = Mesh<Vertex2d>;
 
 //
 
-pub trait Uniform {
-    fn uniform(&self, loc: &Location);
+// TODO think about using mat3 instead of t2d
+#[derive(Debug)]
+#[repr(C)]
+pub struct SbSprite {
+    pub uv: UvRegion,
+    pub transform: Transform2d,
+    pub color: Color,
 }
 
-impl Uniform for f32 {
-    fn uniform(&self, loc: &Location) {
-        unsafe {
-            gl::Uniform1f(loc.location(), *self);
-        }
-    }
-}
-
-impl Uniform for bool {
-    fn uniform(&self, loc: &Location) {
-        unsafe {
-            gl::Uniform1i(loc.location(), if *self { 1 } else { 0 });
-        }
-    }
-}
-
-impl Uniform for i32 {
-    fn uniform(&self, loc: &Location) {
-        unsafe {
-            gl::Uniform1i(loc.location(), *self);
-        }
-    }
-}
-
-impl Uniform for u32 {
-    fn uniform(&self, loc: &Location) {
-        unsafe {
-            gl::Uniform1ui(loc.location(), *self);
-        }
-    }
-}
-
-impl Uniform for glm::Vec4 {
-    fn uniform(&self, loc: &Location) {
-        unsafe {
-            let buf: &[f32; 4] = self.as_ref();
-            gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
-        }
-    }
-}
-
-impl Uniform for Color {
-    fn uniform(&self, loc: &Location) {
-        unsafe {
-            let buf: &[GLfloat; 4] = self.as_ref();
-            gl::Uniform4fv(loc.location(), 1, buf.as_ptr());
-        }
-    }
-}
-
-impl Uniform for glm::Mat3 {
-    fn uniform(&self, loc: &Location) {
-        unsafe {
-            let buf: &[f32] = self.as_slice();
-            gl::UniformMatrix3fv(loc.location(), 1, gl::FALSE, buf.as_ptr());
-        }
-    }
-}
-
-pub struct TextureData<'a> {
-    pub select: GLenum,
-    pub bind_to: GLenum,
-    pub texture: &'a Texture,
-}
-
-impl<'a> TextureData<'a> {
-    pub fn diffuse(texture: &'a Texture) -> Self {
+impl Default for SbSprite {
+    fn default() -> Self {
         Self {
-            select: gl::TEXTURE0,
-            bind_to: gl::TEXTURE_2D,
-            texture,
-        }
-    }
-
-    pub fn normal(texture: &'a Texture) -> Self {
-        Self {
-            select: gl::TEXTURE1,
-            bind_to: gl::TEXTURE_2D,
-            texture,
+            uv: UvRegion::new(0., 0., 1., 1.),
+            transform: Transform2d::identity(),
+            color: Color::new_rgba(1., 1., 1., 1.),
         }
     }
 }
 
-impl Uniform for TextureData<'_> {
-    fn uniform(&self, loc: &Location) {
-        (self.select - gl::TEXTURE0).uniform(loc);
-        unsafe {
-            gl::ActiveTexture(self.select);
-            gl::BindTexture(self.bind_to, self.texture.gl());
-        }
+impl VaoTarget for SbSprite {
+    fn set_attributes(vao: &mut VertexArray) {
+        let base = VertexAttribute {
+            size: 4,
+            ty: gl::FLOAT,
+            normalized: false,
+            stride: std::mem::size_of::<Self>(),
+            offset: 0,
+            divisor: 1,
+        };
+
+        // TODO use enum for all the attrib locs
+
+        vao.enable_attribute(2, VertexAttribute {
+            offset: offset_of!(Self, uv),
+            .. base
+        });
+        vao.enable_attribute(3, VertexAttribute {
+            size: 2,
+            offset: offset_of!(Self, transform) +
+                    offset_of!(Transform2d, position),
+            .. base
+        });
+        vao.enable_attribute(4, VertexAttribute {
+            size: 2,
+            offset: offset_of!(Self, transform) +
+                    offset_of!(Transform2d, scale),
+            .. base
+        });
+        vao.enable_attribute(5, VertexAttribute {
+            size: 1,
+            offset: offset_of!(Self, transform) +
+                    offset_of!(Transform2d, rotation),
+            .. base
+        });
+        vao.enable_attribute(6, VertexAttribute {
+            offset: offset_of!(Self, color),
+            .. base
+        });
     }
 }
 
-//
+/// 2d instancer
+pub type Spritebatch = Instancer<SbSprite, Vertex2d>;
 
-// TODO everything above here is gl stuff and could maybe be put in its own module
+impl Spritebatch {
+    // TODO this is pretty 'default constructor' type stuff
+    pub fn with_size(size: usize) -> Self {
+        Self::new(size,
+                  Mesh2d::new(Vertex2d::quad(false),
+                              Vec::new(),
+                              gl::STATIC_DRAW,
+                              gl::TRIANGLE_STRIP))
+    }
+
+    pub fn print(&mut self, font: &BitmapFont, text: &str) {
+        self.begin();
+
+        let mut x = 0.;
+        let font_h = font.texture().height() as f32;
+        for ch in text.chars() {
+            let region_w = font.region(ch).width() as f32;
+            let sp = self.pull_default();
+            sp.uv = font.uv_region(ch);
+            sp.transform.position.x = x;
+            sp.transform.scale.x = region_w;
+            sp.transform.scale.y = font_h;
+            x += region_w + 1.;
+        }
+
+        self.end();
+    }
+}
 
 //
 
@@ -1132,6 +1390,7 @@ impl DefaultLocations {
 
 //
 
+// TODO move up somewhere
 pub type TextureRegion = AABB<u32>;
 pub type UvRegion = AABB<f32>;
 
@@ -1222,146 +1481,6 @@ impl BitmapFont {
 
 //
 
-// TODO think about using mat3 instead of t2d
-#[derive(Debug)]
-#[repr(C)]
-pub struct SbSprite {
-    pub uv: UvRegion,
-    pub transform: Transform2d,
-    pub color: Color,
-}
-
-impl Default for SbSprite {
-    fn default() -> Self {
-        Self {
-            uv: UvRegion::new(0., 0., 1., 1.),
-            transform: Transform2d::identity(),
-            color: Color::new_rgba(1., 1., 1., 1.),
-        }
-    }
-}
-
-// use centered quad, for particles
-pub struct Spritebatch {
-    buffer: InstanceBuffer<SbSprite>,
-    mesh_quad: Mesh,
-}
-
-impl Spritebatch {
-    pub fn new(size: usize) -> Self {
-        assert!(size != 0);
-
-        let mut mesh_quad =
-            Mesh::new(Vertices::quad(false),
-                      gl::STATIC_DRAW,
-                      gl::TRIANGLE_STRIP);
-
-
-        let buffer = InstanceBuffer::new(size);
-        let ibo = buffer.ibo();
-
-        let vao = mesh_quad.vao_mut();
-
-        let base = VertexAttribute {
-            size: 4,
-            ty: gl::FLOAT,
-            normalized: false,
-            stride: std::mem::size_of::<SbSprite>(),
-            offset: 0,
-            divisor: 1,
-        };
-
-        // TODO use enum for all the attrib locs
-        vao.bind();
-        ibo.bind_to(gl::ARRAY_BUFFER);
-        vao.enable_attribute(2, VertexAttribute {
-            offset: offset_of!(SbSprite, uv),
-            .. base
-        });
-        vao.enable_attribute(3, VertexAttribute {
-            size: 2,
-            offset: offset_of!(SbSprite, transform) +
-                    offset_of!(Transform2d, position),
-            .. base
-        });
-        vao.enable_attribute(4, VertexAttribute {
-            size: 2,
-            offset: offset_of!(SbSprite, transform) +
-                    offset_of!(Transform2d, scale),
-            .. base
-        });
-        vao.enable_attribute(5, VertexAttribute {
-            size: 1,
-            offset: offset_of!(SbSprite, transform) +
-                    offset_of!(Transform2d, rotation),
-            .. base
-        });
-        vao.enable_attribute(6, VertexAttribute {
-            offset: offset_of!(SbSprite, color),
-            .. base
-        });
-        vao.unbind();
-
-        Self {
-            buffer,
-            mesh_quad,
-        }
-    }
-
-    pub fn begin(&mut self) {
-        self.buffer.clear();
-        unsafe {
-            gl::Disable(gl::DEPTH_TEST);
-        }
-    }
-
-    pub fn draw(&mut self) {
-        self.buffer.buffer_data();
-        self.mesh_quad.draw_instanced(self.buffer.fill_count());
-        self.buffer.clear();
-    }
-
-    pub fn end(&mut self) {
-        if self.buffer.fill_count() > 0 {
-            self.draw();
-        }
-    }
-
-    /// Returns an SbSprite for the caller to override. Will be uninitialized.
-    pub fn pull(&mut self) -> &mut SbSprite {
-        if self.buffer.empty_count() == 0 {
-            self.draw();
-        }
-        self.buffer.pull().unwrap()
-    }
-
-    pub fn pull_default(&mut self) -> &mut SbSprite {
-        let ret = self.pull();
-        *ret = Default::default();
-        ret
-    }
-
-    pub fn print(&mut self, font: &BitmapFont, text: &str) {
-        self.begin();
-
-        let mut x = 0.;
-        let font_h = font.texture().height() as f32;
-        for ch in text.chars() {
-            let region_w = font.region(ch).width() as f32;
-            let sp = self.pull_default();
-            sp.uv = font.uv_region(ch);
-            sp.transform.position.x = x;
-            sp.transform.scale.x = region_w;
-            sp.transform.scale.y = font_h;
-            x += region_w + 1.;
-        }
-
-        self.end();
-    }
-}
-
-//
-
 // polygon
 // line
 // triangle
@@ -1371,8 +1490,8 @@ impl Spritebatch {
 pub struct ShapeDrawer {
     line_thickness: f32,
 
-    mesh_quad: Mesh,
-    mesh_circle: Mesh,
+    mesh_quad: Mesh2d,
+    mesh_circle: Mesh2d,
     tex_white: Texture,
 }
 
@@ -1380,12 +1499,14 @@ impl ShapeDrawer {
     pub fn new(circle_resolution: usize) -> Self {
         let white = RgbaImage::from_pixel(1, 1, Rgba::from([255, 255, 255, 255]));
         Self {
-            mesh_quad: Mesh::new(Vertices::quad(false),
-                                 gl::STATIC_DRAW,
-                                 gl::TRIANGLE_STRIP),
-            mesh_circle: Mesh::new(Vertices::circle(circle_resolution),
+            mesh_quad: Mesh2d::new(Vertex2d::quad(false),
+                                   Vec::new(),
                                    gl::STATIC_DRAW,
-                                   gl::TRIANGLE_FAN),
+                                   gl::TRIANGLE_STRIP),
+            mesh_circle: Mesh2d::new(Vertex2d::circle(circle_resolution),
+                                     Vec::new(),
+                                     gl::STATIC_DRAW,
+                                     gl::TRIANGLE_FAN),
             tex_white: Texture::new(&white),
             line_thickness: 2.0,
         }
