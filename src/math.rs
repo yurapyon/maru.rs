@@ -151,6 +151,7 @@ impl<T: Number> AABB<T> {
 
 //
 
+/*
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
@@ -223,6 +224,7 @@ impl Vertices {
         }
     }
 }
+*/
 
 // TODO eq derives
 #[derive(Copy, Clone, Debug)]

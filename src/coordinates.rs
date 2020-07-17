@@ -10,6 +10,7 @@ use crate::{
 //      take transform2d (if still going to use it)
 //        just turn into coordTransforms and push them
 //      take entire mat3s?
+//      apply composed to a single location
 
 pub enum CoordinateTransform {
     Translate(glm::Vec2),

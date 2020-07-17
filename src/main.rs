@@ -22,6 +22,12 @@ use maru::{
     gfx::*,
     glfw::*,
     math::ext::*,
+    defaults::two_d::{
+        self,
+        Spritebatch,
+        BitmapFont,
+        DefaultLocations,
+    }
 };
 
 fn main() {
@@ -40,8 +46,8 @@ fn main() {
 
     // let draw = ShapeDrawer::new(50);
 
-    let mut sb = Spritebatch::with_size(50);
-    let sb_prog = Program::new_default_spritebatch().unwrap();
+    let mut sb = Spritebatch::with_quad(50);
+    let sb_prog = two_d::default_spritebatch_program().unwrap();
     let sb_locs = DefaultLocations::new(&sb_prog);
 
     let font = BitmapFont::new_default();
