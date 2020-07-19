@@ -1,16 +1,12 @@
 use nalgebra_glm as glm;
 
-use crate::{
-    gfx::{
-        DefaultLocations,
-    },
-};
-
 // TODO shear
 //      take transform2d (if still going to use it)
 //        just turn into coordTransforms and push them
 //      take entire mat3s?
-//      apply composed to a single location
+// nalgabra has alot of stuff to handle transforms
+//   could just have a stack of various affine transforms
+//   Affine2
 
 pub enum CoordinateTransform {
     Translate(glm::Vec2),
@@ -19,7 +15,6 @@ pub enum CoordinateTransform {
 }
 
 /// Draw with offsets.
-/// Uses the view matrix of the locations.
 pub struct CoordinateStack {
     stk: Vec<CoordinateTransform>,
     composed: glm::Mat3,
@@ -39,18 +34,16 @@ impl CoordinateStack {
         self.stk.is_empty()
     }
 
-    fn on_changed(&mut self, locs: &DefaultLocations) {
-        locs.view().set(&self.composed);
-    }
-
-    pub fn clear(&mut self, locs: &DefaultLocations) {
+    pub fn clear(&mut self) -> &glm::Mat3 {
         self.stk.clear();
         self.composed = glm::Mat3::identity();
-        self.on_changed(locs);
+        &self.composed
     }
 
-    pub fn push(&mut self, t: CoordinateTransform, locs: &DefaultLocations) {
+    pub fn push(&mut self, t: CoordinateTransform) -> &glm::Mat3 {
         let temp = match t {
+            // TODO allow these to be applied to mat3 directly
+            //        maybe nalgebra already has stuff like this
             CoordinateTransform::Translate(v) => {
                 glm::translation2d(&v)
             },
@@ -62,15 +55,14 @@ impl CoordinateStack {
             },
         };
         self.composed = temp * self.composed;
-        self.on_changed(locs);
         self.stk.push(t);
+        &self.composed
     }
 
     /// Will panic if the stack is empty.
-    pub fn pop(&mut self, locs: &DefaultLocations) {
+    pub fn pop(&mut self) -> &glm::Mat3 {
         match self.stk.pop() {
             Some(t) => {
-
                 let temp = match t {
                     CoordinateTransform::Translate(v) => {
                         glm::translation2d(&-v)
@@ -83,11 +75,11 @@ impl CoordinateStack {
                     },
                 };
                 self.composed = temp * self.composed;
-                self.on_changed(locs);
             },
             None => {
                 panic!("coordinate stack underflow");
             },
         }
+        &self.composed
     }
 }

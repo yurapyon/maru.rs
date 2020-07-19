@@ -1,12 +1,12 @@
 #version 330 core
 
 // basic
-in vec2 _uv_coord;
-in float _tm;
-
 uniform sampler2D _tx_diffuse;
 uniform sampler2D _tx_normal;
 uniform vec4 _base_color;
+
+in vec2 _uv_coord;
+in float _tm;
 
 // spritebatch
 in vec4 _sb_color;

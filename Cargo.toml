@@ -12,7 +12,6 @@ nalgebra = "0.21"
 nalgebra-glm = "0.7"
 approx = "*"
 num-traits = "0.2"
-
-[dependencies.glfw]
-version = "0.38.0"
-features = ["image"]
+ika = "0.3.0"
+# ika = { path = "../ika" }
+sdl2 = "0.34"

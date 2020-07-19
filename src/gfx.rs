@@ -81,77 +81,6 @@ pub enum GfxError {
 
 //
 
-// TODO
-// shader tamplates not super necessary
-//   were a way to save strings you loaded from file,
-//   but because of rust, shaders are all just in memory
-
-/// Holds information about maru's default shader format.
-///
-/// # Example
-///
-/// TODO: shader template format example
-pub struct ShaderTemplate {
-    header: String,
-    // TODO should be an option ?
-    extras: String,
-    effect: String,
-    footer: String,
-}
-
-impl ShaderTemplate {
-    /// Creates a new shader template.
-    pub fn new(base: &str, extras: Option<&str>) -> Result<Self, GfxError> {
-        if !base.is_ascii() {
-            return Err(GfxError::BadInit(String::from("base string must be ascii")));
-        }
-
-        let ct = base.chars()
-            .filter(| &x | x == '@')
-            .count();
-        if ct != 2 {
-            return Err(GfxError::BadInit(String::from("invalid base string")));
-        }
-
-        let mut strs = base.split('@');
-        let header = String::from(strs.next().unwrap());
-        let effect = String::from(strs.next().unwrap());
-        let footer = String::from(strs.next().unwrap());
-
-        let extras = match extras {
-            Some(s) => String::from(s),
-            None    => String::new(),
-        };
-
-        Ok(Self {
-            header,
-            extras,
-            effect,
-            footer,
-        })
-    }
-
-    /*
-    pub fn as_string(&self, effect: Option<&str>) -> String {
-        let effect = match effect {
-            Some(s) => s,
-            None    => &self.effect,
-        };
-
-        let strs = [
-            &self.header,
-            &self.extras,
-            effect,
-            &self.footer,
-        ];
-
-        strs.concat()
-    }
-    */
-}
-
-//
-
 // TODO think about using Newtype
 //    not going to be any different
 //    only thing would be optimization i guess
@@ -166,6 +95,7 @@ impl Shader {
     // TODO report errors better
     //        also report warnings somehow?
     //      does it really need to take an array of strs?
+    //        if you had an arry of strs you could just do [].concat() into a String.
     /// Creates a new shader from strings.
     pub fn new(ty: GLenum, strings: &[&str]) -> Result<Self, GfxError> {
         let c_strs: Vec<_> = strings.iter()
@@ -202,23 +132,6 @@ impl Shader {
 
             Ok(Self { shader })
         }
-    }
-
-    /// Creates a new shader from a template, with optional replacement effect.
-    pub fn from_template(ty: GLenum, st: &ShaderTemplate, effect: Option<&str>) -> Result<Self, GfxError> {
-        let effect = match effect {
-            Some(s) => s,
-            None    => &st.effect,
-        };
-
-        let strs = [
-            &st.header,
-            &st.extras,
-            effect,
-            &st.footer,
-        ];
-
-        Shader::new(ty, &strs)
     }
 
     pub fn gl(&self) -> GLuint {
@@ -687,7 +600,6 @@ pub struct VertexAttribute {
     pub divisor: GLuint,
 }
 
-// TODO push attributes?
 /// Simple wrapper around an OpenGL vertex array.
 pub struct VertexArray {
     vao: GLuint,
@@ -764,10 +676,8 @@ pub trait Vertex {
 
 //
 
+// TODO allow user access to mesh?
 /// Optimized instancer of a mesh.
-///
-/// It's undefined behavior to edit the mesh in between a .begin() and .end() call.
-/// Currently editing the mesh at all isn't supported.
 pub struct Instancer<T: Vertex, M: Vertex> {
     ibo: Buffer<T>,
     vec: Vec<T>,
@@ -825,6 +735,8 @@ impl<T: Vertex, M: Vertex> Instancer<T, M> {
         self.vec.push(obj);
     }
 
+    // TODO make unsafe maybe
+    //   note: draw call may happen such that this T will not be included in it
     /// Returns an T for the caller to override. Will be uninitialized.
     pub fn pull(&mut self) -> &mut T {
         if self.empty_count() == 0 {
@@ -863,6 +775,7 @@ pub struct Canvas {
     rbo: GLuint,
 }
 
+// TODO structs for renderbuffer and framebuffer
 impl Canvas {
     pub fn new(width: u32, height: u32) -> Self {
         let img = RgbaImage::from_pixel(width, height, Rgba::from([0, 0, 0, 255]));
@@ -933,10 +846,10 @@ impl Drop for Canvas {
 
 pub struct Mesh<T: Vertex> {
     vao: VertexArray,
-    vertices: Vec<T>,
     vbo: Buffer<T>,
-    indices: Vec<u32>,
+    vertices: Vec<T>,
     ebo: Buffer<u32>,
+    indices: Vec<u32>,
     _buffer_type: GLenum,
     draw_type: GLenum,
 }
@@ -954,11 +867,11 @@ impl<T: Vertex> Mesh<T> {
         vao.unbind();
 
         Self {
-            vertices,
-            indices,
             vao,
             vbo,
+            vertices,
             ebo,
+            indices,
             _buffer_type: buffer_type,
             draw_type,
         }

@@ -1,52 +1,46 @@
-use std::{
-    thread,
-    time,
-};
-
 use gl::{
     self,
 };
-use glfw::{
-    self,
-    Action,
-    Context,
-    Key,
+use sdl2::{
+    keyboard::Keycode,
+    event::Event,
 };
-use image;
 use nalgebra_glm as glm;
 
 //
 
 use maru::{
-    content,
+    sdl::{
+        Context,
+        ContextSettings,
+    },
     gfx::*,
-    glfw::*,
     math::ext::*,
     defaults::two_d::{
         self,
         Spritebatch,
         BitmapFont,
         DefaultLocations,
-    }
+    },
+    particles::*,
+    timer::Timer,
 };
 
 fn main() {
-    let mut ctx = GlfwContext::new(GlfwContextSettings {
+    let mut ctx = Context::new(ContextSettings {
         window_width: 600,
         window_height: 400,
         .. Default::default()
     });
 
-    let mahou_img = image::load_from_memory(content::image::MAHOU).unwrap().to_rgba();
-    let mahou_tex = Texture::new(&mahou_img);
+    let mahou_tex = two_d::debug_texture();
     let mahou_td = TextureData::diffuse(&mahou_tex);
 
     let m3_screen = ortho_screen(glm::vec2(600, 400));
-    let mut time = 0.;
 
     // let draw = ShapeDrawer::new(50);
 
-    let mut sb = Spritebatch::with_quad(50);
+    let mut sb = Spritebatch::with_quad(50, false);
     let sb_prog = two_d::default_spritebatch_program().unwrap();
     let sb_locs = DefaultLocations::new(&sb_prog);
 
@@ -54,34 +48,54 @@ fn main() {
     let font_tex = font.texture();
     let font_td = TextureData::diffuse(font_tex);
 
-    let s_tm = time::Duration::from_millis(30);
+    let mut ps = ParticleSystem::new(100);
 
-    while !ctx.window.should_close() {
-        ctx.glfw.poll_events();
-        for (_, event) in glfw::flush_messages(&ctx.events) {
-            // println!("{:?}", event);
+    for i in 0..50 {
+        ps.spawn(| p | {
+            p.age = 0.;
+            p.lifetime = 15.;
+            p.position = glm::vec2(i as f32 * 6. + 10., 300.);
+            p.velocity = glm::vec2(20., -10.);
+        });
+    }
+
+    let mut tm = Timer::new();
+    let mut time = 0.;
+
+    'running: loop {
+        for event in ctx.events.poll_iter() {
             match event {
-                glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-                    ctx.window.set_should_close(true)
+                Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                    break 'running;
                 },
-                _ => {},
+                _ => {}
             }
         }
-
-        time += 0.1;
 
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT);
             gl::Disable(gl::DEPTH_TEST);
         }
 
+        let dt = tm.step();
+        time += dt;
+
+        ps.update(dt);
+
         sb_prog.bind();
         sb_locs.reset();
-        m3_screen.uniform(sb_locs.screen());
-        time.uniform(sb_locs.time());
+        sb_locs.screen().set(&m3_screen);
+        sb_locs.time().set(&(time));
+        sb_locs.diffuse().set(&mahou_td);
 
-        mahou_td.uniform(sb_locs.diffuse());
+        ps.draw();
 
+        ctx.window.gl_swap_window();
+        tm.sleep_millis(30);
+    }
+
+
+        /*
         sb.begin();
 
         let tmp = sb.pull();
@@ -108,8 +122,5 @@ fn main() {
 
         font_td.uniform(sb_locs.diffuse());
         sb.print(&font, "hello world scl by 2");
-
-        ctx.window.swap_buffers();
-        thread::sleep(s_tm);
-    }
+        */
 }

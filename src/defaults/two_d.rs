@@ -19,55 +19,92 @@ use crate::{
     },
 };
 
+//
+
+mod shaders {
+    pub const DEFAULT_VERT: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+                             "/content/shaders/default.vert"));
+
+    pub const DEFAULT_FRAG: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+                             "/content/shaders/default.frag"));
+
+    pub const EXTRAS: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+                             "/content/shaders/lib.incl.glsl"));
+
+    pub const DEFAULT_SB_VERT: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+                             "/content/shaders/spritebatch.incl.vert"));
+
+    pub const DEFAULT_SB_FRAG: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"),
+                             "/content/shaders/spritebatch.incl.frag"));
+}
+
+mod images {
+    pub const MAHOU: &[u8] =
+        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"),
+                               "/content/mahou.jpg"));
+
+    pub const SMALL_FONT: &[u8] =
+        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"),
+                               "/content/small_font.png"));
+}
+
+//
+
 // TODO
-// move default content into here
+// program structs that have locations in them ?
+
+fn parse_shader_template<'a: 'b, 'b>(template: &'a str, effect: Option<&'b str>) -> Vec<&'b str> {
+    let mut ret: Vec<_> = template.split('@').collect();
+    assert!(ret.len() == 3);
+    if let Some(effect) = effect {
+        ret[1] = effect;
+    }
+    ret
+}
 
 //
 
 /// Creates a default maru program, with optionial vert and frag effects.
 pub fn default_program(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Program, GfxError> {
-    use crate::content;
+    let mut v_strs = parse_shader_template(shaders::DEFAULT_VERT, v_effect);
+    v_strs.insert(1, shaders::EXTRAS);
+    let vert = Shader::new(gl::VERTEX_SHADER, &v_strs)?;
 
-    let vert = Shader::from_template(gl::VERTEX_SHADER,
-        &ShaderTemplate::new(content::shaders::DEFAULT_VERT,
-            Some(content::shaders::EXTRAS))?,
-        v_effect,
-    )?;
-
-    let frag = Shader::from_template(gl::FRAGMENT_SHADER,
-        &ShaderTemplate::new(content::shaders::DEFAULT_FRAG,
-            Some(content::shaders::EXTRAS))?,
-        f_effect,
-    )?;
+    let mut f_strs = parse_shader_template(shaders::DEFAULT_FRAG, f_effect);
+    f_strs.insert(1, shaders::EXTRAS);
+    let frag = Shader::new(gl::FRAGMENT_SHADER, &f_strs)?;
 
     Program::new(&[vert, frag])
 }
 
-// TODO dont allow return errors ?
-//        would prefer this thing could actually take effects? or something
-//        ik its not a big deal to reimplement shader logic per user shader idk
-//        maybe just get rid of this?
-//        weird
-// just use a completely different shader template
-//   still return errors
+// TODO
+//   take effects
+//   probably just use a completely different shader template
+//     still return errors
 /// Creates a default maru spritebatch program.
 /// Effects cannot be suppiled as with `Program::new_default()`.
 pub fn default_spritebatch_program() -> Result<Program, GfxError> {
-    use crate::content;
+    let mut v_strs = parse_shader_template(shaders::DEFAULT_VERT,
+                                           Some(shaders::DEFAULT_SB_VERT));
+    v_strs.insert(1, shaders::EXTRAS);
+    let vert = Shader::new(gl::VERTEX_SHADER, &v_strs)?;
 
-    let vert = Shader::from_template(gl::VERTEX_SHADER,
-        &ShaderTemplate::new(content::shaders::DEFAULT_VERT,
-            Some(content::shaders::EXTRAS))?,
-        Some(content::shaders::DEFAULT_SB_VERT),
-    )?;
-
-    let frag = Shader::from_template(gl::FRAGMENT_SHADER,
-        &ShaderTemplate::new(content::shaders::DEFAULT_FRAG,
-            Some(content::shaders::EXTRAS))?,
-        Some(content::shaders::DEFAULT_SB_FRAG),
-    )?;
+    let mut f_strs = parse_shader_template(shaders::DEFAULT_FRAG,
+                                           Some(shaders::DEFAULT_SB_FRAG));
+    f_strs.insert(1, shaders::EXTRAS);
+    let frag = Shader::new(gl::FRAGMENT_SHADER, &f_strs)?;
 
     Program::new(&[vert, frag])
+}
+
+pub fn debug_texture() -> Texture {
+    let img = image::load_from_memory(images::MAHOU).unwrap().to_rgba();
+    Texture::new(&img)
 }
 
 //
@@ -226,16 +263,18 @@ impl Vertex for SbSprite {
 pub type Spritebatch = Instancer<SbSprite, Vertex2d>;
 
 impl Spritebatch {
-    // TODO this is pretty 'default constructor' type stuff
-    pub fn with_quad(size: usize) -> Self {
+    pub fn with_quad(size: usize, centered: bool) -> Self {
         Self::new(size,
-                  Mesh2d::new(Vertex2d::quad(false),
+                  Mesh2d::new(Vertex2d::quad(centered),
                               Vec::new(),
                               gl::STATIC_DRAW,
                               gl::TRIANGLE_STRIP))
     }
 
     pub fn print(&mut self, font: &BitmapFont, text: &str) {
+        // TODO set font texture as diffuse
+        //        cant do this without diffuse location
+
         self.begin();
 
         let mut x = 0.;
@@ -405,9 +444,7 @@ impl BitmapFont {
     }
 
     pub fn new_default() -> Self {
-        use crate::content;
-
-        let fn_img = image::load_from_memory(content::image::SMALL_FONT).unwrap().to_rgba();
+        let fn_img = image::load_from_memory(images::SMALL_FONT).unwrap().to_rgba();
         Self::new(&fn_img,
         " ABCDEFGHIJKLMNOPQRSTUVWXYZ\
           abcdefghijklmnopqrstuvwxyz\
