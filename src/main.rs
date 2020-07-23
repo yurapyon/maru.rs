@@ -1,11 +1,11 @@
 use gl::{
     self,
 };
+use nalgebra_glm as glm;
 use sdl2::{
     keyboard::Keycode,
     event::Event,
 };
-use nalgebra_glm as glm;
 
 //
 
@@ -21,6 +21,7 @@ use maru::{
         Spritebatch,
         BitmapFont,
         DefaultLocations,
+        ShapeDrawer,
     },
     particles::*,
     timer::Timer,
@@ -38,10 +39,12 @@ fn main() {
 
     let m3_screen = ortho_screen(glm::vec2(600, 400));
 
-    // let draw = ShapeDrawer::new(50);
+    let draw = ShapeDrawer::new(50);
+    let prog = two_d::default_program(None, None).unwrap();
+    let locs = DefaultLocations::new(&prog);
 
     let mut sb = Spritebatch::with_quad(50, false);
-    let sb_prog = two_d::default_spritebatch_program().unwrap();
+    let sb_prog = two_d::default_spritebatch_program(None, None).unwrap();
     let sb_locs = DefaultLocations::new(&sb_prog);
 
     let font = BitmapFont::new_default();
@@ -58,6 +61,13 @@ fn main() {
             p.velocity = glm::vec2(20., -10.);
         });
     }
+
+    ps.spawn_some(10, | (i, p) | {
+        p.age = 0.;
+        p.lifetime = 5.;
+        p.position = glm::vec2(i as f32 * 6. + 10., i as f32 * 2. + 100.);
+        p.velocity = glm::vec2(20., 10.);
+    });
 
     let mut tm = Timer::new();
     let mut time = 0.;
@@ -89,6 +99,11 @@ fn main() {
         sb_locs.diffuse().set(&mahou_td);
 
         ps.draw();
+
+        prog.bind();
+        locs.reset();
+        locs.screen().set(&m3_screen);
+        draw.filled_rectangle(&locs, 20., 20., 30., 30.);
 
         ctx.window.gl_swap_window();
         tm.sleep_millis(30);

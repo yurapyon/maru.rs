@@ -6,12 +6,17 @@ edition = "2018"
 
 [dependencies]
 gl = "0.14.0"
-image = "0.23.7"
+# image = "0.23.7"
 memoffset = "0.5.4"
 nalgebra = "0.21"
 nalgebra-glm = "0.7"
 approx = "*"
 num-traits = "0.2"
-ika = "0.3.0"
+ika = "0.4"
 # ika = { path = "../ika" }
 sdl2 = "0.34"
+
+[dependencies.image]
+version = "0.23.7"
+default-features = false
+features = ["png", "jpeg"]

@@ -13,7 +13,6 @@ use nalgebra_glm as glm;
 use crate::{
     gfx::*,
     math::{
-        AABB,
         Color,
         Transform2d,
     },
@@ -82,20 +81,15 @@ pub fn default_program(v_effect: Option<&str>, f_effect: Option<&str>) -> Result
     Program::new(&[vert, frag])
 }
 
-// TODO
-//   take effects
-//   probably just use a completely different shader template
-//     still return errors
 /// Creates a default maru spritebatch program.
-/// Effects cannot be suppiled as with `Program::new_default()`.
-pub fn default_spritebatch_program() -> Result<Program, GfxError> {
+pub fn default_spritebatch_program(v_effect: Option<&str>, f_effect: Option<&str>) -> Result<Program, GfxError> {
     let mut v_strs = parse_shader_template(shaders::DEFAULT_VERT,
-                                           Some(shaders::DEFAULT_SB_VERT));
+                                           v_effect.or(Some(shaders::DEFAULT_SB_VERT)));
     v_strs.insert(1, shaders::EXTRAS);
     let vert = Shader::new(gl::VERTEX_SHADER, &v_strs)?;
 
     let mut f_strs = parse_shader_template(shaders::DEFAULT_FRAG,
-                                           Some(shaders::DEFAULT_SB_FRAG));
+                                           f_effect.or(Some(shaders::DEFAULT_SB_FRAG)));
     f_strs.insert(1, shaders::EXTRAS);
     let frag = Shader::new(gl::FRAGMENT_SHADER, &f_strs)?;
 
@@ -369,10 +363,10 @@ impl DefaultLocations {
     }
 
     pub fn set_sprite(&self, texture: &Texture, transform: &Transform2d) {
-        let dims = texture.dimensions();
+        let (w, h) = texture.dimensions();
         let temp = Transform2d {
-            scale: glm::vec2(transform.scale.x * dims.x as f32,
-                             transform.scale.y * dims.y as f32),
+            scale: glm::vec2(transform.scale.x * w as f32,
+                             transform.scale.y * h as f32),
             .. *transform
         };
         self.set_sprite_px(texture, &temp);
@@ -502,10 +496,10 @@ impl ShapeDrawer {
     }
 
     /// Sets locations.diffuse() and locations.model()
-    pub fn filled_rectangle(&self, locations: &DefaultLocations, rect: AABB<f32>) {
+    pub fn filled_rectangle(&self, locations: &DefaultLocations, x1: f32, y1: f32, x2: f32, y2: f32) {
         let temp = Transform2d {
-            position: rect.corner1,
-            scale:    glm::vec2(rect.width(), rect.height()),
+            position: glm::vec2(x1, y1),
+            scale:    glm::vec2(x2 - x1, y2 - y1),
             .. Transform2d::identity()
         };
         locations.set_sprite_px(&self.tex_white, &temp);
@@ -527,14 +521,14 @@ impl ShapeDrawer {
     pub fn horizontal_line(&self, locations: &DefaultLocations, y: f32, x1: f32, x2: f32) {
         let y1 = y - self.line_thickness / 2.;
         let y2 = y + self.line_thickness / 2.;
-        self.filled_rectangle(locations, AABB::new(x1, y1, x2, y2));
+        self.filled_rectangle(locations, x1, y1, x2, y2);
     }
 
     /// Sets locations.diffuse() and locations.model()
     pub fn vertical_line(&self, locations: &DefaultLocations, x: f32, y1: f32, y2: f32) {
         let x1 = x - self.line_thickness / 2.;
         let x2 = x + self.line_thickness / 2.;
-        self.filled_rectangle(locations, AABB::new(x1, y1, x2, y2));
+        self.filled_rectangle(locations, x1, y1, x2, y2);
     }
 
     /// Sets locations.diffuse() and locations.model()

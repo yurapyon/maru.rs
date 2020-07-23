@@ -19,12 +19,12 @@ float _time;
 @
 
 vec4 effect() {
-  return _base_color * texture2D(_tx_diffuse, _uv_coord);
+    return _base_color * texture2D(_tx_diffuse, _uv_coord);
 }
 
 @
 
 void main() {
-  _time = _tm;
-  _out_color = effect();
+    _time = _tm;
+    _out_color = effect();
 }

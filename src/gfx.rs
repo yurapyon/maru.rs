@@ -309,6 +309,7 @@ pub struct TextureData<'a> {
 }
 
 impl<'a> TextureData<'a> {
+    // TODO get rid of these
     pub fn diffuse(texture: &'a Texture) -> Self {
         Self {
             select: gl::TEXTURE0,
@@ -440,8 +441,8 @@ impl Texture {
         self.height
     }
 
-    pub fn dimensions(&self) -> glm::U32Vec2 {
-        glm::vec2(self.width, self.height)
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
     }
 
     pub fn gl(&self) -> GLuint {

@@ -2,8 +2,13 @@ use gl::{
     self,
     types::*,
 };
-
-use sdl2;
+use sdl2::{
+    self,
+    event::{
+        Event,
+        WindowEvent,
+    },
+};
 
 pub struct ContextSettings {
     pub ogl_version_major: u32,
@@ -47,15 +52,39 @@ impl Context {
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(3, 3);
 
-        let window = video.window(&settings.window_name,
-                                  settings.window_width,
-                                  settings.window_height)
-                          .opengl()
-                          .build()
-                          .unwrap();
+        let mut builder = video.window(&settings.window_name,
+                                       settings.window_width,
+                                       settings.window_height);
 
+        // TODO allow high dpi ??
+
+        if settings.is_resizable {
+            builder.resizable();
+        }
+
+        builder.opengl();
+
+        let window = builder.build().unwrap();
+
+        // TODO im guessing that this needs to stay alive
+        //      check is window keeps a ref to it or something
         let gl_ctx = window.gl_create_context().unwrap();
         gl::load_with(| name | video.gl_get_proc_address(name) as *const _);
+
+        // TODO error on opengl type not avail
+
+        let mut settings = settings;
+        let (window_w, window_h) = window.drawable_size();
+        settings.window_width = window_w as u32;
+        settings.window_height = window_h as u32;
+
+        unsafe {
+            gl::Viewport(0, 0, settings.window_width as GLint, settings.window_height as GLint);
+            gl::Enable(gl::BLEND);
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+            gl::ClearColor(0., 0., 0., 0.);
+        }
 
         let events = sdl.event_pump().unwrap();
 
@@ -67,5 +96,41 @@ impl Context {
             gl_ctx,
             events,
         }
+    }
+
+    pub fn settings(&self) -> &ContextSettings {
+        &self.settings
+    }
+
+    pub fn maybe_handle_resize(&mut self, event: &Event) -> bool {
+        match event {
+            Event::Window {
+                win_event,
+                ..
+            } => {
+                match win_event {
+                    WindowEvent::Resized(w, h) => {
+                        self.settings.window_width = *w as u32;
+                        self.settings.window_height = *h as u32;
+                        return true;
+                    }
+                    // TODO for now just ignore this but report it as handled
+                    //        figure out what the difference is later
+                    WindowEvent::SizeChanged(..) => {
+                        return true;
+                    }
+                    _ => {
+                        return false;
+                    }
+                }
+            }
+            _ => {
+                return false;
+            }
+        }
+    }
+
+    pub fn window_dimensions(&self) -> (u32, u32) {
+        (self.settings.window_width, self.settings.window_height)
     }
 }

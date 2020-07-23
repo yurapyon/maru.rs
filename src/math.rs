@@ -258,7 +258,7 @@ impl Transform2d {
 pub mod ext {
     use super::*;
 
-    pub fn ortho_screen(dimensions: glm::U32Vec2) -> glm::Mat3 {
+    pub fn ortho_screen(dimensions: glm::UVec2) -> glm::Mat3 {
         let mut ret = glm::Mat3::identity();
         ret[(0, 0)] =  2. / dimensions.x as f32;
         ret[(1, 1)] = -2. / dimensions.y as f32;

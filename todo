@@ -1,5 +1,3 @@
 clean up naming of variables and uniforms in shaders
-content not public module
-
-Pool<T>
-particles
+inlining
+documentation
