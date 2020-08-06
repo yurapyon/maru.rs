@@ -171,7 +171,6 @@ dependencies = [
 name = "maru"
 version = "0.1.0"
 dependencies = [
- "approx",
  "gl",
  "ika",
  "image",

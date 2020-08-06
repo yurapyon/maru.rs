@@ -9,6 +9,8 @@ use crate::{
     },
 };
 
+// make sure this cann support setting textures
+
 #[derive(Default)]
 pub struct Particle {
     pub age: f32,

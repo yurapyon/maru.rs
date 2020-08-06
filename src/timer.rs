@@ -13,11 +13,10 @@ use std::{
 
 // timer should be stepped after initial load
 // timer.start()?
-// use f32 or f64?
 
 pub struct Timer {
     last: Instant,
-    time_dt: f32,
+    time_dt: f64,
 }
 
 impl Timer {
@@ -30,14 +29,14 @@ impl Timer {
         }
     }
 
-    pub fn step(&mut self) -> f32 {
-        self.time_dt = self.last.elapsed().as_secs_f32();
+    pub fn step(&mut self) -> f64 {
+        self.time_dt = self.last.elapsed().as_secs_f64();
         self.last = Instant::now();
         self.time_dt
     }
 
     #[inline]
-    pub fn delta_time(&self) -> f32 {
+    pub fn delta_time(&self) -> f64 {
         self.time_dt
     }
 

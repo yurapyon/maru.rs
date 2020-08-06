@@ -71,12 +71,14 @@ impl Context {
         let gl_ctx = window.gl_create_context().unwrap();
         gl::load_with(| name | video.gl_get_proc_address(name) as *const _);
 
+        video.gl_set_swap_interval(sdl2::video::SwapInterval::VSync).unwrap();
+
         // TODO error on opengl type not avail
 
         let mut settings = settings;
         let (window_w, window_h) = window.drawable_size();
-        settings.window_width = window_w as u32;
-        settings.window_height = window_h as u32;
+        settings.window_width = window_w;
+        settings.window_height = window_h;
 
         unsafe {
             gl::Viewport(0, 0, settings.window_width as GLint, settings.window_height as GLint);
@@ -133,4 +135,27 @@ impl Context {
     pub fn window_dimensions(&self) -> (u32, u32) {
         (self.settings.window_width, self.settings.window_height)
     }
+
+    /* TODO where to put this
+    //    also fix the math
+    pub fn set_scissor(&self, x1: u32, y1: u32, x2: u32, y2: u32) {
+        // TODO what to do ?
+        /*
+        if y1 > self.settings.window_height ||
+            y2 > self.settings.window_height {
+            panic!("invalid window scissor: {} {} {} {}", x1, y1, x2, y2);
+        }
+        */
+        unsafe {
+            gl::Enable(gl::SCISSOR_TEST);
+            gl::Scissor(x1 as i32, (self.settings.window_height - y1) as i32, x2 as i32, (self.settings.window_height - y2) as i32);
+        }
+    }
+
+    pub fn clear_scissor(&self) {
+        unsafe {
+            gl::Disable(gl::SCISSOR_TEST);
+        }
+    }
+    */
 }

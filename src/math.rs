@@ -1,12 +1,5 @@
 // #![allow(dead_code)]
 
-use std::{
-    mem,
-};
-
-use approx::{
-    AbsDiffEq
-};
 use image::{
     self,
 };
@@ -15,44 +8,10 @@ use nalgebra::{
     Scalar,
     ClosedAdd,
     ClosedSub,
-    ClosedMul,
 };
 use num_traits::{
-    FromPrimitive,
     ToPrimitive,
-    Bounded,
 };
-
-//
-
-pub trait Number:
-    Scalar
-    + Copy
-    + PartialOrd
-    + ClosedAdd
-    + ClosedSub
-    + ClosedMul
-    + AbsDiffEq<Epsilon = Self>
-    + FromPrimitive
-    + ToPrimitive
-    + Bounded
-{
-}
-
-impl<T> Number for T
-where
-    T: Scalar
-       + Copy
-       + PartialOrd
-       + ClosedAdd
-       + ClosedSub
-       + ClosedMul
-       + AbsDiffEq<Epsilon = Self>
-       + FromPrimitive
-       + ToPrimitive
-       + Bounded
-{
-}
 
 //
 
@@ -105,6 +64,8 @@ impl From<Color> for image::Rgba<u8> {
 
 impl AsRef<[f32; 4]> for Color {
     fn as_ref(&self) -> &[f32; 4] {
+        use std::mem;
+
         unsafe {
             mem::transmute(self)
         }
@@ -113,118 +74,101 @@ impl AsRef<[f32; 4]> for Color {
 
 //
 
-/// An AABB rectangle.
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
-pub struct AABB<T: Number> {
-    pub corner1: glm::TVec2<T>,
-    pub corner2: glm::TVec2<T>,
+/// An AABB rectangle.
+pub struct AABB<T: Scalar> {
+    pub c1: glm::TVec2<T>,
+    pub c2: glm::TVec2<T>,
 }
 
-impl<T: Number> AABB<T> {
+impl<T: Scalar> AABB<T> {
     pub fn new(x1: T, y1: T, x2: T, y2: T) -> Self {
         Self {
-            corner1: glm::vec2(x1, y1),
-            corner2: glm::vec2(x2, y2),
-        }
-    }
-
-    pub fn width(&self) -> T {
-        self.corner2.x - self.corner1.x
-    }
-
-    pub fn height(&self) -> T {
-        self.corner2.y - self.corner1.y
-    }
-
-    pub fn normalized(&self, point: &glm::TVec2<T>) -> AABB<f32> {
-        let point = point.map(| x | x.to_f32().unwrap());
-        let corner1 = self.corner1.map(| x | x.to_f32().unwrap()).component_div(&point);
-        let corner2 = self.corner2.map(| x | x.to_f32().unwrap()).component_div(&point);
-        AABB {
-            corner1,
-            corner2,
+            c1: glm::vec2(x1, y1),
+            c2: glm::vec2(x2, y2),
         }
     }
 }
 
+impl<T: Scalar + ClosedSub + Copy> AABB<T> {
+    // TODO height and width should do absolute value ?
+    #[inline]
+    pub fn width(&self) -> T {
+        self.c2.x - self.c1.x
+    }
 
-//
+    #[inline]
+    pub fn height(&self) -> T {
+        self.c2.y - self.c1.y
+    }
+}
+
+impl<T: Scalar + ToPrimitive> AABB<T> {
+    pub fn normalized(&self, vec: glm::TVec2<T>) -> AABB<f32> {
+        let x = vec.x.to_f32().unwrap();
+        let y = vec.y.to_f32().unwrap();
+        let x1 = self.c1.x.to_f32().unwrap() / x;
+        let y1 = self.c1.y.to_f32().unwrap() / y;
+        let x2 = self.c2.x.to_f32().unwrap() / x;
+        let y2 = self.c2.y.to_f32().unwrap() / y;
+        AABB::new(x1, y1, x2, y2)
+    }
+}
+
+impl<T: Scalar + PartialOrd> AABB<T> {
+    pub fn reorient(&mut self) {
+        use std::mem;
+
+        if self.c1.x > self.c2.x {
+            mem::swap(&mut self.c1.x, &mut self.c2.x);
+        };
+
+        if self.c1.y > self.c2.y {
+            mem::swap(&mut self.c1.y, &mut self.c2.y);
+        }
+    }
+}
+
+impl<T: Scalar + ClosedAdd + Copy> AABB<T> {
+    pub fn displace(&mut self, offset: glm::TVec2<T>) {
+        self.c1 += offset;
+        self.c2 += offset;
+    }
+}
 
 /*
-#[derive(Copy, Clone, Debug)]
-#[repr(C)]
-pub struct Vertex {
-    pub position: glm::Vec2,
-    pub uv: glm::Vec2,
-}
+// would like to slice into a ndarray array, but overcomlicates and brings in unnecessary dependency
+impl<T: Scalar + ClosedAdd + Ord + Copy> AABB<T> {
+    /// Panics if the AABB is not normalized.
+    pub fn slice_up(&self, width: T, height: T) -> Vec<AABB<T>> {
+        use std::cmp::min;
 
-pub struct Vertices {
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u32>,
-}
+        if self.c2.y <= self.c1.y ||
+            self.c2.x <= self.c1.x {
+            panic!("AABB must be normalized to take make slices of it");
+        }
 
-impl Vertices {
-    pub fn quad(centered: bool) -> Vertices {
-        let mut vertices = Vec::with_capacity(4);
+        let mut regions = Vec::new();
 
-        vertices.push(Vertex {
-            position: glm::vec2(1., 1.),
-            uv:       glm::vec2(1., 1.),
-        });
-
-        vertices.push(Vertex {
-            position: glm::vec2(1., 0.),
-            uv:       glm::vec2(1., 0.),
-        });
-
-        vertices.push(Vertex {
-            position: glm::vec2(0., 1.),
-            uv:       glm::vec2(0., 1.),
-        });
-
-        vertices.push(Vertex {
-            position: glm::vec2(0., 0.),
-            uv:       glm::vec2(0., 0.),
-        });
-
-        if centered {
-            for vert in vertices.iter_mut() {
-                vert.position.x -= 0.5;
-                vert.position.y -= 0.5;
+        let mut y = self.c1.y;
+        while y < self.c2.y {
+            let mut x = self.c1.x;
+            while x < self.c2.x {
+                regions.push(AABB::new(x, y,
+                        min(self.c2.x, x + width),
+                        min(self.c2.y, y + height)));
+                x += width;
             }
+            y += height;
         }
 
-        Self {
-            vertices,
-            indices: Vec::new(),
-        }
-    }
-
-    pub fn circle(resolution: usize) -> Vertices {
-        use std::f32::consts;
-
-        let mut vertices = Vec::new();
-
-        let angle_step = (consts::PI * 2.) / (resolution as f32);
-
-        for i in 0..resolution {
-            let at = (i as f32) * angle_step;
-            let x = at.cos() / 2.;
-            let y = at.sin() / 2.;
-            vertices.push(Vertex {
-                position: glm::vec2(x, y),
-                uv:       glm::vec2(x + 0.5, y + 0.5),
-            });
-        }
-
-        Self {
-            vertices,
-            indices: Vec::new(),
-        }
+        regions
     }
 }
 */
+
+//
 
 // TODO eq derives
 #[derive(Copy, Clone, Debug)]

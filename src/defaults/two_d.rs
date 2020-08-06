@@ -55,7 +55,9 @@ mod images {
 //
 
 // TODO
-// program structs that have locations in them ?
+//   default program structs that have locations in them ?
+//   change shade tamplet to just use one @ symbol ot signify where effect shoudl go
+//     and have the default program effect be an incl, like how shader template is now
 
 fn parse_shader_template<'a: 'b, 'b>(template: &'a str, effect: Option<&'b str>) -> Vec<&'b str> {
     let mut ret: Vec<_> = template.split('@').collect();
@@ -314,34 +316,42 @@ impl DefaultLocations {
         }
     }
 
+    #[inline]
     pub fn screen(&self) -> &Location {
         &self.screen
     }
 
+    #[inline]
     pub fn view(&self) -> &Location {
         &self.view
     }
 
+    #[inline]
     pub fn model(&self) -> &Location {
         &self.model
     }
 
+    #[inline]
     pub fn time(&self) -> &Location {
         &self.time
     }
 
+    #[inline]
     pub fn flip_uvs(&self) -> &Location {
         &self.flip_uvs
     }
 
+    #[inline]
     pub fn base_color(&self) -> &Location {
         &self.base_color
     }
 
+    #[inline]
     pub fn diffuse(&self) -> &Location {
         &self.tx_diffuse
     }
 
+    #[inline]
     pub fn normal(&self) -> &Location {
         &self.tx_normal
     }
@@ -357,11 +367,23 @@ impl DefaultLocations {
         self.time().set(&0.);
     }
 
+    #[inline]
+    pub fn set_rectangle(&self, x1: f32, y1: f32, x2: f32, y2: f32) {
+        let temp = Transform2d {
+            position: glm::vec2(x1, y1),
+            scale:    glm::vec2(x2 - x1, y2 - y1),
+            .. Transform2d::identity()
+        };
+        self.model().set(&glm::Mat3::from(temp));
+    }
+
+    #[inline]
     pub fn set_sprite_px(&self, texture: &Texture, transform: &Transform2d) {
         self.diffuse().set(&TextureData::diffuse(texture));
         self.model().set(&glm::Mat3::from(*transform));
     }
 
+    #[inline]
     pub fn set_sprite(&self, texture: &Texture, transform: &Transform2d) {
         let (w, h) = texture.dimensions();
         let temp = Transform2d {
@@ -370,6 +392,11 @@ impl DefaultLocations {
             .. *transform
         };
         self.set_sprite_px(texture, &temp);
+    }
+
+    #[inline]
+    pub fn set_base_color_rgba(&self, r: f32, g: f32, b: f32, a: f32) {
+        self.base_color.set(&Color::new_rgba(r, g, b, a));
     }
 }
 
@@ -427,7 +454,7 @@ impl BitmapFont {
         let tx_point = glm::vec2(texture.width() as u32, texture.height() as u32);
 
         let uv_regions = regions.iter()
-                                .map(| region | region.normalized(&tx_point))
+                                .map(| region | region.normalized(tx_point))
                                 .collect();
 
         Self {
@@ -489,6 +516,11 @@ impl ShapeDrawer {
             tex_white: Texture::new(&white),
             line_thickness: 2.0,
         }
+    }
+
+    // TODO clean up api in general
+    pub fn draw_quad(&self) {
+        self.mesh_quad.draw();
     }
 
     pub fn line_thickness_mut(&mut self) -> &mut f32 {

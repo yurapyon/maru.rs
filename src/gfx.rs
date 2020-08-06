@@ -705,14 +705,18 @@ impl<T: Vertex, M: Vertex> Instancer<T, M> {
         }
     }
 
+    /// note: does not change OpenGL state
     pub fn begin(&mut self) {
         self.vec.clear();
     }
 
+    /// note: not expensive to call if instancer is empty
     pub fn draw(&mut self) {
-        self.buffer_data();
-        self.mesh.draw_instanced(self.fill_count());
-        self.clear();
+        if self.fill_count() > 0 {
+            self.buffer_data();
+            self.mesh.draw_instanced(self.fill_count());
+            self.clear();
+        }
     }
 
     pub fn end(&mut self) {

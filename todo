@@ -1,3 +1,6 @@
 clean up naming of variables and uniforms in shaders
 inlining
 documentation
+
+use bdf fonts
+particle system

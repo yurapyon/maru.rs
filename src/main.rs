@@ -87,7 +87,7 @@ fn main() {
             gl::Disable(gl::DEPTH_TEST);
         }
 
-        let dt = tm.step();
+        let dt = tm.step() as f32;
         time += dt;
 
         ps.update(dt);
