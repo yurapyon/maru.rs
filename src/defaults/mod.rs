@@ -1,1 +1,1 @@
-pub mod two_d;
+pub mod two_dimensional;

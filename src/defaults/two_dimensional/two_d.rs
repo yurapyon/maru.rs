@@ -256,22 +256,49 @@ impl Vertex for SbSprite {
 }
 
 /// 2d instancer
-pub type Spritebatch = Instancer<SbSprite, Vertex2d>;
+pub struct Spritebatch {
+    instancer: Instancer<SbSprite>,
+    quad: Mesh<Vertex2d>,
+    quad_centered: Mesh<Vertex2d>,
+}
 
 impl Spritebatch {
-    pub fn with_quad(size: usize, centered: bool) -> Self {
-        Self::new(size,
-                  Mesh2d::new(Vertex2d::quad(centered),
-                              Vec::new(),
-                              gl::STATIC_DRAW,
-                              gl::TRIANGLE_STRIP))
+    pub fn new(size: usize) -> Self {
+        let instancer = Instancer::new(size);
+        let mut quad = Mesh2d::new(Vertex2d::quad(false),
+                                   Vec::new(),
+                                   gl::STATIC_DRAW,
+                                   gl::TRIANGLE_STRIP);
+        let mut quad_centered = Mesh2d::new(Vertex2d::quad(true),
+                                            Vec::new(),
+                                            gl::STATIC_DRAW,
+                                            gl::TRIANGLE_STRIP);
+
+        instancer.make_mesh_compatible(&mut quad);
+        instancer.make_mesh_compatible(&mut quad_centered);
+
+        Self {
+            instancer,
+            quad,
+            quad_centered,
+        }
     }
 
+    pub fn bind<'a>(&'a mut self, centered_quad: bool) -> BoundSpritebatch<'a> {
+        self.instancer.bind(if centered_quad {
+                &self.quad_centered
+            } else {
+                &self.quad
+            })
+    }
+}
+
+pub type BoundSpritebatch<'a> = BoundInstancer<'a, SbSprite, Vertex2d>;
+
+impl<'a> BoundSpritebatch<'a> {
     pub fn print(&mut self, font: &BitmapFont, text: &str) {
         // TODO set font texture as diffuse
         //        cant do this without diffuse location
-
-        self.begin();
 
         let mut x = 0.;
         let font_h = font.texture().height() as f32;
@@ -284,8 +311,6 @@ impl Spritebatch {
             sp.transform.scale.y = font_h;
             x += region_w + 1.;
         }
-
-        self.end();
     }
 }
 

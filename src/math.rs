@@ -138,12 +138,9 @@ impl<T: Scalar + ClosedAdd + Copy> AABB<T> {
 }
 
 /*
-// would like to slice into a ndarray array, but overcomlicates and brings in unnecessary dependency
-impl<T: Scalar + ClosedAdd + Ord + Copy> AABB<T> {
-    /// Panics if the AABB is not normalized.
+/// Slices to a vec as to be less complex
+impl<T: Scalar + ClosedAdd + PartialOrd + Copy> AABB<T> {
     pub fn slice_up(&self, width: T, height: T) -> Vec<AABB<T>> {
-        use std::cmp::min;
-
         if self.c2.y <= self.c1.y ||
             self.c2.x <= self.c1.x {
             panic!("AABB must be normalized to take make slices of it");
@@ -152,16 +149,19 @@ impl<T: Scalar + ClosedAdd + Ord + Copy> AABB<T> {
         let mut regions = Vec::new();
 
         let mut y = self.c1.y;
-        while y < self.c2.y {
+        while y <= self.c2.y {
             let mut x = self.c1.x;
-            while x < self.c2.x {
+            while x <= self.c2.x {
                 regions.push(AABB::new(x, y,
-                        min(self.c2.x, x + width),
-                        min(self.c2.y, y + height)));
+                                       x + width,
+                                       y + height));
                 x += width;
             }
             y += height;
         }
+
+        // TODO panic of slices are night aligned properly
+        //   right now just ignores them
 
         regions
     }
