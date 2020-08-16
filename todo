@@ -3,7 +3,9 @@ inlining
 documentation
 
 use bdf fonts
-particle system
 
-texture regions can use i32
-  if uv region is a float which can be positive or negative
+set scissor and gl clear
+
+rename sdl to context or something
+
+game util module or something

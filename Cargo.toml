@@ -6,13 +6,11 @@ edition = "2018"
 
 [dependencies]
 gl = "0.14"
-memoffset = "0.5"
+sdl2 = "0.34"
 nalgebra = "0.21"
 nalgebra-glm = "0.7"
 num-traits = "0.2"
-ika = "0.4"
-# ika = { path = "../ika" }
-sdl2 = "0.34"
+memoffset = "0.5"
 
 [dependencies.image]
 version = "0.23"

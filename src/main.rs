@@ -20,7 +20,7 @@ use maru::{
         self,
         Spritebatch,
         BitmapFont,
-        DefaultLocations,
+        Locations,
         ShapeDrawer,
     },
     timer::Timer,
@@ -40,11 +40,11 @@ fn main() {
 
     let draw = ShapeDrawer::new(50);
     let prog = two_dimensional::default_program(None, None).unwrap();
-    let locs = DefaultLocations::new(&prog);
+    let locs = Locations::new(&prog);
 
     let mut sb = Spritebatch::new(50);
     let sb_prog = two_dimensional::default_spritebatch_program(None, None).unwrap();
-    let sb_locs = DefaultLocations::new(&sb_prog);
+    let sb_locs = Locations::new(&sb_prog);
 
     let font = BitmapFont::new_default();
     let font_tex = font.texture();

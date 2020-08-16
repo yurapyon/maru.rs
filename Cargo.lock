@@ -105,12 +105,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ika"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90e014ad03a50b5a1461ef8b70f3293ef69acdbe1a78de5a7dd1552ec64dfb74"
-
-[[package]]
 name = "image"
 version = "0.23.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -172,12 +166,10 @@ name = "maru"
 version = "0.1.0"
 dependencies = [
  "gl",
- "ika",
  "image",
  "memoffset",
  "nalgebra",
  "nalgebra-glm",
- "num-traits",
  "sdl2",
 ]
 
